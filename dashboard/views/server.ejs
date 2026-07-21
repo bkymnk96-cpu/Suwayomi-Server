@@ -1,0 +1,243 @@
+<%- include('partials/header') %>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<!-- Sidebar -->
+<%- include('partials/sidebar', { activeTab: 'general' }) %>
+
+<main class="app-content">
+    <div class="content-header mb-2">
+        <h1><i class="fa-solid fa-server"></i> <%= guild.name %></h1>
+        <p>مراقبة نشاط السيرفر وإحصائياته وتغيير الإعدادات العامة للبوت</p>
+    </div>
+
+    <!-- Stats Grid -->
+    <div class="stats-grid reveal">
+        <!-- Members growth chart -->
+        <div class="chart-card">
+            <h3><i class="fa-solid fa-users"></i> حركة الأعضاء (آخر 7 أيام)</h3>
+            <div class="chart-container">
+                <canvas id="membersChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Voice duration chart -->
+        <div class="chart-card">
+            <h3><i class="fa-solid fa-microphone-lines"></i> دقائق التفاعل الصوتي (آخر 7 أيام)</h3>
+            <div class="chart-container">
+                <canvas id="voiceChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Hourly message chart -->
+        <div class="chart-card">
+            <h3><i class="fa-solid fa-message"></i> نشاط الكتابة بالساعات</h3>
+            <div class="chart-container">
+                <canvas id="messagesChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <div class="glass-panel reveal" style="animation-delay: 0.1s;">
+        <div class="section-title"><i class="fa-solid fa-sliders"></i> الإعدادات العامة</div>
+        <p class="text-muted mb-2">تكوين الإعدادات الأساسية لقنوات البوت وردوده</p>
+
+        <% if (typeof req !== 'undefined' && req.query && req.query.success) { %>
+            <div class="alert alert-success"><i class="fa-solid fa-circle-check"></i> <%= req.query.success %></div>
+        <% } %>
+
+        <form action="/dashboard/<%= guild.id %>/general" method="POST" class="settings-form">
+
+            <div class="form-group">
+                <label for="log_channel">روم سجلات الإشراف (Mod Log)</label>
+                <select id="log_channel" name="log_channel" class="glass-input">
+                    <option value="none" <%= !(settings && settings.log_channel) || settings.log_channel === 'none' ? 'selected' : '' %>>بدون / تعطيل</option>
+                    <% textChannels.forEach(c => { %>
+                        <option value="<%= c.id %>" <%= (settings && settings.log_channel === c.id) ? 'selected' : '' %>># <%= c.name %></option>
+                    <% }) %>
+                </select>
+                <small>القناة التي ترسل إليها سجلات الإشراف والعقوبات</small>
+            </div>
+
+            <div class="grid-form-2 mt-2">
+                <div class="form-group">
+                    <label for="reply_type">نوع ردود البوت</label>
+                    <select id="reply_type" name="reply_type" class="glass-input">
+                        <option value="embed" <%= (settings && settings.reply_type === 'embed') ? 'selected' : '' %>>بطاقة مدمجة (Embed Message)</option>
+                        <option value="normal" <%= (settings && settings.reply_type === 'normal') ? 'selected' : '' %>>رسالة نصية عادية (Normal Message)</option>
+                    </select>
+                    <small>طريقة عرض ردود وأجوبة البوت التفاعلية</small>
+                </div>
+
+                <div class="form-group">
+                    <label for="bank_channel">قناة لعبة البنك المحددة</label>
+                    <select id="bank_channel" name="bank_channel" class="glass-input">
+                        <option value="none" <%= !(settings && settings.bank_channel) || settings.bank_channel === 'none' ? 'selected' : '' %>>بدون / مسموح في كل القنوات</option>
+                        <% textChannels.forEach(c => { %>
+                            <option value="<%= c.id %>" <%= (settings && settings.bank_channel === c.id) ? 'selected' : '' %>># <%= c.name %></option>
+                        <% }) %>
+                    </select>
+                    <small>القناة المخصصة لألعاب وأوامر البنك فقط</small>
+                </div>
+            </div>
+
+
+            <button type="submit" class="btn btn-primary mt-3"><i class="fa-solid fa-floppy-disk"></i> حفظ التغييرات</button>
+        </form>
+    </div>
+</main>
+
+<script>
+    // Config global chart styling
+    Chart.defaults.color = '#a0a0a0';
+    Chart.defaults.font.family = 'IBM Plex Sans Arabic, Inter, sans-serif';
+
+    // Process Member Stats
+    const rawMemberStats = <%- JSON.stringify(memberStats) %>;
+    const memberLabels = [];
+    const joinsData = [];
+    const leavesData = [];
+
+    if (rawMemberStats.length === 0) {
+        for (let i = 6; i >= 0; i--) {
+            const d = new Date();
+            d.setDate(d.getDate() - i);
+            const dateStr = d.toISOString().split('T')[0];
+            memberLabels.push(dateStr);
+            joinsData.push(0);
+            leavesData.push(0);
+        }
+    } else {
+        rawMemberStats.forEach(stat => {
+            memberLabels.push(stat.date);
+            joinsData.push(stat.joins);
+            leavesData.push(stat.leaves);
+        });
+    }
+
+    // Process Voice Stats
+    const rawVoiceStats = <%- JSON.stringify(voiceStats) %>;
+    const voiceLabels = [];
+    const voiceData = [];
+
+    if (rawVoiceStats.length === 0) {
+        for (let i = 6; i >= 0; i--) {
+            const d = new Date();
+            d.setDate(d.getDate() - i);
+            const dateStr = d.toISOString().split('T')[0];
+            voiceLabels.push(dateStr);
+            voiceData.push(0);
+        }
+    } else {
+        rawVoiceStats.forEach(stat => {
+            voiceLabels.push(stat.date);
+            voiceData.push(Math.round(stat.seconds / 60));
+        });
+    }
+
+    // Process Messages Stats (24 Hours)
+    const rawMessageStats = <%- JSON.stringify(messageStats) %>;
+    const messageLabels = Array.from({length: 24}, (_, i) => `${i}:00`);
+    const messageData = Array(24).fill(0);
+
+    rawMessageStats.forEach(stat => {
+        if (stat.hour >= 0 && stat.hour < 24) {
+            messageData[stat.hour] = stat.count;
+        }
+    });
+
+    const gridColor = 'rgba(255, 255, 255, 0.05)';
+
+    // Render Members Chart
+    new Chart(document.getElementById('membersChart'), {
+        type: 'line',
+        data: {
+            labels: memberLabels,
+            datasets: [
+                {
+                    label: 'انضمام',
+                    data: joinsData,
+                    borderColor: '#4ade80',
+                    backgroundColor: 'rgba(74, 222, 128, 0.05)',
+                    tension: 0.3,
+                    fill: true,
+                    borderWidth: 2
+                },
+                {
+                    label: 'مغادرة',
+                    data: leavesData,
+                    borderColor: '#f87171',
+                    backgroundColor: 'rgba(248, 113, 113, 0.05)',
+                    tension: 0.3,
+                    fill: true,
+                    borderWidth: 2
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { labels: { color: '#a0a0a0' } }
+            },
+            scales: {
+                x: { grid: { color: gridColor }, ticks: { color: '#a0a0a0' } },
+                y: { grid: { color: gridColor }, ticks: { color: '#a0a0a0', stepSize: 1 } }
+            }
+        }
+    });
+
+    // Render Voice Chart
+    new Chart(document.getElementById('voiceChart'), {
+        type: 'line',
+        data: {
+            labels: voiceLabels,
+            datasets: [{
+                label: 'دقائق الصوت',
+                data: voiceData,
+                borderColor: '#a0a0a0',
+                backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                tension: 0.3,
+                fill: true,
+                borderWidth: 2
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false }
+            },
+            scales: {
+                x: { grid: { color: gridColor }, ticks: { color: '#a0a0a0' } },
+                y: { grid: { color: gridColor }, ticks: { color: '#a0a0a0', stepSize: 1 } }
+            }
+        }
+    });
+
+    // Render Messages Chart
+    new Chart(document.getElementById('messagesChart'), {
+        type: 'bar',
+        data: {
+            labels: messageLabels,
+            datasets: [{
+                label: 'الرسائل المرسلة',
+                data: messageData,
+                backgroundColor: '#ffffff',
+                borderRadius: 4
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false }
+            },
+            scales: {
+                x: { grid: { display: false }, ticks: { color: '#a0a0a0', maxRotation: 45, minRotation: 45 } },
+                y: { grid: { color: gridColor }, ticks: { color: '#a0a0a0', stepSize: 1 } }
+            }
+        }
+    });
+</script>
+
+<%- include('partials/footer') %>

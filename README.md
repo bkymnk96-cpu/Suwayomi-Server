@@ -1,246 +1,91 @@
+<div align="center">
 
-| Build                                                                                         | Stable                                                                                                                                                                   | Preview                                                                                                                                                                                                                                           | Support Server |
-|-----------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------|
-| ![CI](https://github.com/Suwayomi/Suwayomi-Server/actions/workflows/build_push.yml/badge.svg) | [![stable release](https://img.shields.io/github/release/Suwayomi/Suwayomi-Server.svg?maxAge=3600&label=download)](https://github.com/Suwayomi/Suwayomi-Server/releases) | [![preview](https://img.shields.io/badge/dynamic/json?url=https://github.com/Suwayomi/Suwayomi-Server-preview/raw/main/index.json&label=download&query=$.latest&color=blue)](https://github.com/Suwayomi/Suwayomi-Server-preview/releases/latest) | [![Discord](https://img.shields.io/discord/801021177333940224.svg?label=discord&labelColor=7289da&color=2c2f33&style=flat)](https://discord.gg/DDZdqZWaHA) |
+# E-246 System — ديسكورد بوت متكامل
 
-## Table of Contents
-- [What is Suwayomi?](#what-is-suwayomi)
-  - [Features](#features)
-- [Suwayomi client projects](#suwayomi-client-projects)
-  - [Integrated clients](#integrated-clients)
-  - [Other clients](#other-clients-potentially-inactive-or-abandoned)
-- [Downloading and Running the app](#downloading-and-running-the-app)
-  - [Using Operating System Specific Bundles](#using-operating-system-specific-bundles)
-    - [Windows](#windows)
-    - [macOS](#macos)
-    - [GNU/Linux](#gnulinux)
-  - [Other methods of getting Suwayomi](#other-methods-of-getting-suwayomi)
-    - [Docker](#docker)
-    - [Arch Linux](#arch-linux)
-    - [Debian/Ubuntu](#debianubuntu)
-    - [NixOS](#nixos)
-  - [Advanced Methods](#advanced-methods)
-    - [Running the jar release directly](#running-the-jar-release-directly)
-    - [Using Suwayomi Remotely](#using-suwayomi-remotely)
-  - [Syncing With Mihon (Tachiyomi) and Neko](#syncing-with-mihon-tachiyomi-and-neko)
-    - [The Suwayomi extension and tracker](#the-suwayomi-extension-and-tracker)
-    - [The Suwayomi merge source in Neko](#the-suwayomi-merge-source-in-neko)
-    - [Other methods](#other-methods)
-  - [Troubleshooting and Support](#troubleshooting-and-support)
-  - [Contributing and Technical info](#contributing-and-technical-info)
-  - [Translation](#translation)
-  - [Credit](#credit)
-  - [License](#license)
-  - [Disclaimer](#disclaimer)
-<!-- Generated with https://ecotrust-canada.github.io/markdown-toc/ -->
+![Node.js](https://img.shields.io/badge/Node.js-339933?style=for-the-badge&logo=nodedotjs&logoColor=white) ![npm](https://img.shields.io/badge/npm-CB3837?style=for-the-badge&logo=npm&logoColor=white) ![Discord](https://img.shields.io/badge/Discord-5865F2?style=for-the-badge&logo=discord&logoColor=white) ![Version](https://img.shields.io/badge/Version-1.0.5-blueviolet?style=for-the-badge)
 
-# What is Suwayomi?
-<img src="https://github.com/Suwayomi/Suwayomi-Server/raw/master/server/src/main/resources/icon/faviconlogo.png" alt="drawing" width="200"/>
+ديسكورد بوت احترافي متكامل يحتوي على لوحة تحكم ويب متجاوبة وقاعدة بيانات مدمجة لإدارة سيرفرك باحترافية كاملة
 
-A free and open source manga reader server that runs extensions built for [Mihon (Tachiyomi)](https://mihon.app/).
+</div>
 
-Suwayomi is an independent Mihon (Tachiyomi) compatible software and is **not a Fork of** Mihon (Tachiyomi).
+---
 
-Suwayomi-Server is as multi-platform as you can get. Any platform that runs java and/or has a modern browser can run it. This includes Windows, Linux, macOS, chrome OS, etc. Follow [Downloading and Running the app](#downloading-and-running-the-app) for installation instructions.
+> [!IMPORTANT]
+> **ملاحظة هامة:** تأكد من إعداد جميع المتغيرات في ملف `.env` بشكل صحيح وتفعيل صلاحيات الـ Gateway Intents كاملة في بوابة المطورين (Discord Developer Portal) قبل تشغيل البوت لتفادي أي أخطاء في الاتصال.
 
-You can use Mihon (Tachiyomi) to access your Suwayomi-Server. For more info look [here](#syncing-with-mihon-tachiyomi-and-neko).
+---
 
-## Features
-> [!NOTE]
->
-> These are capabilities of Suwayomi-Server, the actual working support is provided by each front-end app, checkout their respective readme for more info.
+## المميزات الرئيسية
 
-- Installing and executing Mihon (Tachiyomi)'s Extensions, So you'll get the same sources
-- Searching and browsing installed sources
-- A library to save your mangas and categories to put them into
-- Automated library updates to check for new chapters
-- Automated download of new chapters
-- Viewing latest updated chapters
-- Ability to download Manga for offline read
-- Backup and restore support powered by Mihon (Tachiyomi)-compatible Backups
-- Automated backup creations
-- Tracking via [MyAnimeList](https://myanimelist.net/), [AniList](https://anilist.co/), [MangaUpdates](https://www.mangaupdates.com/), etc.
-- [FlareSolverr](https://github.com/FlareSolverr/FlareSolverr) support to bypass Cloudflare protection
-- Automated WebUI updates (supports the default WebUI and VUI)
-- OPDS and OPDS-PSE support (endpoint: `/api/opds/v1.2`)
+- **إدارة السيرفر:** حظر، طرد، تحذيرات، إسكات مؤقت، وقفل/فتح الرومات.
+- **نظام الغرف الصوتية المؤقتة (Temp Voice):**
+  - **Auto-Save:** نظام حفظ ذكي لحفظ اسم وللحد الأقصى للروم الخاص بالعضو وتحميله تلقائياً عند دخوله مجدداً.
+  - **Voice Ban:** حظر أعضاء محددين لمنعهم من رؤية الغرفة أو الدخول إليها، وطردهم فوراً إذا كانوا متواجدين.
+  - **Co-Owner:** إمكانية تعيين مسؤولين مساعدين لإدارة الغرفة وقفلها/فتحها معك.
+  - **لوحة تحكم (Panel):** لوحة تحكم تفاعلية مجمعة في روم واحد مع إيموجيات مخصصة عالية الجودة.
+- **ألعاب وتسلية فاخرة بنظام Canvas:** ألعاب أسرع كتابة (/faster) والقنبلة (/bomb) وزر السرعة (/button) والمافيا (/mafia) تعمل بالكامل بنظام توليد Canvas ديناميكي متطور ومخصص يحمل هوية السيرفر وصور وأفاتارات اللاعبين النشطين.
+- **نظام الاقتصاد والبنك المتكامل (/bank):** نظام مالي واقتصادي متطور يدعم الوظائف، العقارات، الشركات، الاستثمار، التداول، سرقة البنك والنهب، مع دروع حماية الحسابات.
+- **غرفة البنك المخصصة واختصارات البريفكس:** إمكانية تحديد روم محدد من لوحة التحكم لتنفيذ كافة أوامر البنك وسجل المعاملات، وتوفير أوامر بريفكس مختصرة للاستعلام السريع (-محفظة و -وقت).
+- **نظام الإيموجيات الملونة المطور:** لوحة تحكم متكاملة تتيح لمالك البوت تغيير ثيم ألوان البوت ورفعها تلقائياً لملفات تطبيق ديسكورد فور الحفظ مع تسريع عملية الرفع 5 أضعاف لمنع التداخل والتعارض.
+- **قاعدة بيانات MongoDB:** بنية تحتية قوية تدعم تخزين وقراءة كافة البيانات والإعدادات وحسابات البنك والألعاب بشكل فوري ومستقر بالكامل.
+- **إحصائيات تفاعلية (Web Dashboard):** رسوم بيانية تفاعلية ومتحركة (Chart.js) بمظهر زجاجي متطور لعرض معدل نمو الأعضاء، نشاط الكتابة بالساعات، وإجمالي دقائق التفاعل الصوتي.
+- **نظام السجن (Jail System):** سجن الأعضاء المخالفين في روم مخصص، وسحب صلاحياتهم، مع إمكانية استدعائهم لروم صوتي للتحقيق مع الإدارة.
+- **نظام الحماية والأمان (Security):** حماية شاملة من الروابط، السبام، إنشاء الويبهوكات الخبيثة، إضافة البوتات، أو إعطاء رتب الإدارة (Anti-Admin).
+- **التذاكر والدعم الفني (Tickets):** إنشاء تذاكر مخصصة مع أوامر قوية للتحكم بالتذاكر (إضافة/طرد أعضاء، تغيير اسم التذكرة) وحفظ أرشيف المحادثات.
+- **شكر البوست التلقائي (Autoboost):** التعرف التلقائي على الأعضاء الذين يقومون ببوست للسيرفر وإرسال رسائل شكر تلقائية مخصصة لهم.
+- **المستويات والدعوات:** احتساب نقاط التفاعل الصوتي والكتابي، تتبع الدعوات (حقيقية، مزيفة، مغادرين).
+- **الأتمتة والترحيب:** تفعيل الفاصل والضريبة التلقائية لبروبوت، ورسائل الترحيب والمغادرة.
 
-# Suwayomi Client Projects
-**You need a client/user interface app as a front-end for Suwayomi-Server, if you [Directly Download Suwayomi-Server](https://github.com/Suwayomi/Suwayomi-Server/releases/latest) you'll get a bundled version of [Suwayomi-WebUI](https://github.com/Suwayomi/Suwayomi-WebUI) with it.**
+---
 
-Here's a list of known clients/user interfaces for Suwayomi-Server (checkout the respective GitHub repository for their features):
+## قائمة الأقسام والأوامر
 
-##### Integrated clients
+| القسم               | الأوامر                                                            | الوصف                                         |
+| :------------------ | :----------------------------------------------------------------- | :-------------------------------------------- |
+| **الإدارة والسجن**  | `/ban`, `/kick`, `/timeout`, `/warn`, `/jail`, `/bc`               | معاقبة المخالفين وسجنهم وبث الرسائل           |
+| **البنك والاقتصاد**  | `/bank`                                                            | العمليات المالية، القروض، الاستثمار والمقامرة |
+| **الألعاب والتسلية**| `/faster`, `/bomb`, `/mafia`, `/button`, `/chairs`                 | ألعاب تفاعلية وسرعة بديهة بنظام Canvas        |
+| **المستويات**       | `/rank`, `/topmessages`, `/topvoice`, `/topreactions`, `/settings` | نظام النقاط والترقيات الصوتي والكتابي         |
+| **التذاكر**         | `/ticket-setup`, `/ticket`, `/open`, `/close`, `/delete`           | الدعم الفني وإدارة بطاقات المساعدة            |
+| **الدعوات**         | `/invites`, `/info`, `/addrank`, `/setlogs`                        | تتبع إحصائيات دعوات الأعضاء                   |
+| **الأتمتة والبوست** | `/autoline`, `/autotax`, `/autoboost`, `/autoreply`                | تشغيل الفواصل والضريبة التلقائية وشكر البوست  |
+| **الحماية**         | `/setup`, `/setlimits`, `/whitelist`, `/unwhitelist`               | إعداد الحماية وحماية السيرفر من التخريب       |
+| **العامة**          | `/user`, `/avatar`, `/banner`, `/server`, `/help`                  | معلومات الأعضاء والسيرفر والملفات الشخصية     |
+| **الغرف المؤقتة**   | `/tempvoice`                                                       | إعداد وتخصيص نظام إنشاء الغرف الصوتية المؤقتة |
 
-These clients are built-in options, and the server can keep them automatically up-to-date.
+---
 
-- [Suwayomi-WebUI](https://github.com/Suwayomi/Suwayomi-WebUI): Web app, PWA
-- [Suwayomi-VUI](https://github.com/Suwayomi/Suwayomi-VUI): Web app, PWA
+## متطلبات التشغيل والبدء السريع
 
-##### Other clients (potentially inactive or abandoned)
-- [Tachidesk-VaadinUI](https://github.com/Suwayomi/Tachidesk-VaadinUI): Desktop app (windows, linux, mac); UI in the browser, manages its own suwayomi server instance
-- [Moku](https://github.com/Youwes09/Moku): Desktop app (windows, linux, mac), can manage its own suwayomi server instance
-- [Tachidesk-JUI](https://github.com/Suwayomi/Tachidesk-JUI): Desktop app (windows, linux, mac); can manage its own suwayomi server instance
-- [Tachidesk-Sorayomi](https://github.com/Suwayomi/Tachidesk-Sorayomi): Web app; Desktop app (windows, linux, mac); Android app; requires access to a running server
-- [Tachidesk-qtui](https://github.com/Suwayomi/Tachidesk-qtui): Android app; iOS app Desktop app (linux); requires access to a running server
-- [Suwayomi Client for KOReader](https://github.com/LK4D4/suwayomi.koplugin): KOReader plugin; works anywhere KOReader can run (Android, Kindle, Kobo, etc.); requires access to a running server
+1. **تثبيت الحزم المطلوبة:**
 
-# Downloading and Running the app
-## Using Operating System Specific Bundles
-To facilitate the use of Suwayomi we provide bundle releases that include The Java Runtime Environment, ElectronJS and the Suwayomi-Launcher.
+   ```bash
+   npm install
+   ```
 
-If a bundle for your operating system or cpu architecture is not provided then refer to [Advanced Methods](#advanced-methods)
+2. **تهيئة ملف الإعدادات (`.env`):**
+   قم بإنشاء ملف `.env` في المسار الرئيسي بالبيانات التالية:
 
-### Windows
-Download the latest `win64`(Windows 64-bit) release from [the releases section](https://github.com/Suwayomi/Suwayomi-Server/releases) or a preview one from [the preview repository](https://github.com/Suwayomi/Suwayomi-Server-preview/releases).
+   ```env
+   DISCORD_TOKEN=توكن_البوت
+   CLIENT_ID=معرف_البوت
+   GUILD_ID=معرف_السيرفر_للتجربة
+   CLIENT_SECRET=سيكرت_البوت
+   PORT=3000
+   CALLBACK_URL=http://localhost:3000/auth/callback
+   DISABLE_DASHBOARD=false
+   OWNER_ID=ايدي_مالك_البوت
+   MONGO_URI=رابط_قاعدة_بيانات_مونجو
+   ```
 
-Unzip the downloaded file and double-click on one of the launcher scripts.
+3. **تشغيل البوت:**
+   ```bash
+   npm start
+   ```
 
-### macOS
-Download the latest `macOS-x64`(older macOS systems) or `macOS-arm64`(Apple M1 and newer) release from [the releases section](https://github.com/Suwayomi/Suwayomi-Server/releases) or a preview one from [the preview repository](https://github.com/Suwayomi/Suwayomi-Server-preview/releases).
+---
 
-Unzip the downloaded file and double-click on one of the launcher scripts.
-
-### GNU/Linux
-Download the latest `linux-x64`(x86_64) release from [the releases section](https://github.com/Suwayomi/Suwayomi-Server/releases) or a preview one from [the preview repository](https://github.com/Suwayomi/Suwayomi-Server-preview/releases).
-
-`tar xvf` the downloaded file and double-click on one of the launcher scripts or run them using the terminal.
-
-#### WebView support (GNU/Linux)
-
-WebView support is implemented via [JCEF](https://github.com/JetBrains/jcef).
-This is optional, and is only necessary to support some extensions.
-
-To have a functional WebView, some X11 dependencies are required for rendering Chromium.
-These include `libxrender`, `libxcomposite` `libxdamage`, `libxkbcommon` and `libxtst`.
-
-A CEF server is launched on startup, which loads the X11 libraries.
-If those are missing, you should see "Could not load 'jcef' library".
-If so, use `ldd ~/.local/share/Tachidesk/bin/kcef/libjcef.so | grep not` to figure out which libraries are not found on your system.
-
-Refer to the [Dockerfile](https://github.com/Suwayomi/Suwayomi-Server-docker/blob/main/Dockerfile) for more details.
-
-Note that it is required to have an X session active and available to Suwayomi (i.e. `DISPLAY` is set).
-It is not enough to have `WAYLAND_DISPLAY`, if your environment does not provide xwayland (or if you run Suwayomi as a service), you need to use a tool like [`Xvfb`](https://en.wikipedia.org/wiki/Xvfb).
-The Dockerfile linked above also does this.
-
-## Other methods of getting Suwayomi
-### Docker
-Check our Official Docker release [Suwayomi Container](https://github.com/orgs/Suwayomi/packages/container/package/tachidesk) for running Suwayomi Server in a docker container. Source code for our container is available at [docker-tachidesk](https://github.com/Suwayomi/docker-tachidesk), an example compose file can also be found there. By default, the server will be running on http://localhost:4567 open this url in your browser.
-
-### Arch Linux
-You can install Suwayomi from the AUR:
-```
-yay -S suwayomi-server-bin
-```
-
-### Debian/Ubuntu
-Download the latest deb package from the release section.
-
-> [!CAUTION]
-> These options are outdated and unmaintained ([relevant issue](https://github.com/Suwayomi/Suwayomi-Server/issues/1318))
-> ### MPR
-> ```
-> git clone https://mpr.makedeb.org/tachidesk-server.git
-> cd tachidesk-server
-> makedeb -si
-> ```
-> ### Ubuntu
-> ```
-> sudo add-apt-repository ppa:suwayomi/tachidesk-server
-> sudo apt update
-> sudo apt install tachidesk-server
-> ```
-
-### NixOS
-You can deploy Suwayomi on NixOS using the module `services.suwayomi-server` in your configuration:
-
-```
-{
-  services.suwayomi-server = {
-    enable = true;
-  };
-}
-```
-
-For more information, see [the NixOS manual](https://nixos.org/manual/nixos/stable/#module-services-suwayomi-server).
-
-You can also directly use the package from [nixpkgs](https://search.nixos.org/packages?channel=unstable&type=packages&query=suwayomi-server).
-
-## Advanced Methods
-### Running the jar release directly
-In order to run the app you need the following:
-- The jar release of Suwayomi-Server
-- The Java Runtime Environment(JRE) 21 or newer
-- A Browser like Google Chrome, Firefox, Edge, etc.
-- ElectronJS (optional)
-
-Download the latest `.jar` release from [the releases section](https://github.com/Suwayomi/Suwayomi-Server/releases) or a preview jar build from [the preview repository](https://github.com/Suwayomi/Suwayomi-Server-preview/releases).
-
-Make sure you have The Java Runtime Environment installed on your system, Double-click on the jar file or run `java -jar Suwayomi-Server-vX.Y.Z-rxxxx.jar` from a Terminal/Command Prompt window to run the app which will open a new browser window automatically.
-
-### Using Suwayomi Remotely
-You can run Suwayomi on your computer or a server and connect to it remotely through one of our clients or the bundled web interface with a web browser. This method of using Suwayomi is requiring a bit of networking/firewall/port forwarding/server configuration/etc. knowledge on your side, if you can run a Minecraft server and configure it, then you are good to go.
-
-Check out [this wiki page](https://github.com/Suwayomi/Suwayomi-Server/wiki/Configuring-Tachidesk-Server) for a guide on configuring Suwayomi-Server. 
-
-If you face issues with your setup then we are happy to provide help, just join our discord server(a discord badge is on the top of the page, you are just a click-clack away!).
-
-## Syncing With Mihon (Tachiyomi) and Neko
-### The Suwayomi extension and tracker
-- You can install and configure the `Suwayomi` [extension](https://github.com/Suwayomi/tachiyomi-extension) inside Mihon (Tachiyomi) and forks.
-- The extension will load your Suwayomi library.
-- By manipulating extension search filters you can browse your categories.
-- You can enable the Suwayomi tracker to track reading progress with your Suwayomi server.
-  - Note: to sync from
-    - Mihon (Tachiyomi) to Suwayomi: Mihon (Tachiyomi) automatically updates the chapters read status when it's updating the tracker (e.g. while reading)
-    - Suwayomi to Mihon (Tachiyomi): To sync Mihon (Tachiyomi) with Suwayomi, you have to open the manga's track information, then, Mihon (Tachiyomi) will automatically update its chapter list with the state from Suwayomi
-
-### The Suwayomi merge source in Neko
-- You can enable the `Suwayomi` source in the Merge Source settings
-- You can merge titles in Neko with titles from your Suwayomi library.
-- You can enable 2-way automatic sync to track reading progress with your Suwayomi server.
-  - Note: only applies to merged titles
-    - Neko automatically updates the chapters read status in Suwayomi
-    - During updates, Neko will automatically update its chapter list with the read state from Suwayomi
-    - This only pulls if the status is read, to prevent marking read chapters as unread in Neko
-
-### Other methods
-Checkout [this issue](https://github.com/Suwayomi/Suwayomi-Server/issues/159) for tracking progress.
-
-## Troubleshooting and Support
-See [this troubleshooting wiki page](https://github.com/Suwayomi/Suwayomi-Server/wiki/Troubleshooting).
-
-## Contributing and Technical info
-See [CONTRIBUTING.md](./CONTRIBUTING.md).
-
-## Translation
-Feel free to translate the project on [Weblate](https://hosted.weblate.org/projects/suwayomi/suwayomi-server/)
-
-<details><summary>Translation Progress</summary>
-<a href="https://hosted.weblate.org/engage/suwayomi-server/">
-<img src="https://hosted.weblate.org/widgets/suwayomi/-/suwayomi-server/multi-auto.svg" alt="Translation status" />
-</a>
-</details>
-
-## Credit
-This project is a spiritual successor of [TachiWeb-Server](https://github.com/Tachiweb/TachiWeb-server), Many of the ideas and the groundwork adopted in this project comes from TachiWeb.
-
-The `AndroidCompat` module was originally developed by [@null-dev](https://github.com/null-dev) for [TachiWeb-Server](https://github.com/Tachiweb/TachiWeb-server) and is licensed under `Apache License Version 2.0` and `Copyright 2019 Andy Bao and contributors`.
-
-Parts of [Mihon (Tachiyomi)](https://github.com/mihonapp/mihon) is adopted into this codebase, also licensed under `Apache License Version 2.0` and `Copyright 2015 Javier Tomás`.
-
-You can obtain a copy of `Apache License Version 2.0` from  http://www.apache.org/licenses/LICENSE-2.0
-
-Changes to both codebases is licensed under `MPL v. 2.0` as the rest of this project.
-
-## License
-
-    Copyright (C) Contributors to the Suwayomi project
-
-    This Source Code Form is subject to the terms of the Mozilla Public
-    License, v. 2.0. If a copy of the MPL was not distributed with this
-    file, You can obtain one at http://mozilla.org/MPL/2.0/.
-
-## Disclaimer
-
-The developer of this application does not have any affiliation with the content providers available.
+<div align="center">
+  <b>صنع بالكثير من القهوة طبعا بواسطة اينزو</b><br>
+  <sup>جميع الحقوق محفوظة &copy; 2026 EnzoCord</sup>
+</div>

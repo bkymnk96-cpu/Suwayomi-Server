@@ -1,0 +1,206 @@
+<%- include('partials/header') %>
+<%- include('partials/sidebar', { activeTab: 'embed' }) %>
+
+<main class="app-content">
+    <div class="content-header">
+        <h1><i class="fa-solid fa-paintbrush"></i> صانع الإمبيد المتقدم</h1>
+        <p>صمّم بطاقات ديسكورد (Embeds) مخصصة مع معاينة حية قبل النشر في السيرفر</p>
+    </div>
+
+    <% if (typeof req !== 'undefined' && req.query && req.query.success) { %>
+        <div class="alert alert-success"><i class="fa-solid fa-circle-check"></i> <%= req.query.success %></div>
+    <% } %>
+    <% if (typeof req !== 'undefined' && req.query && req.query.error) { %>
+        <div class="alert alert-danger"><i class="fa-solid fa-triangle-exclamation"></i> <%= req.query.error %></div>
+    <% } %>
+
+    <div class="tickets-layout reveal">
+        <!-- Settings Form -->
+        <div class="glass-panel">
+            <form action="/dashboard/<%= guild.id %>/embed" method="POST" class="settings-form">
+                <div class="section-title"><i class="fa-solid fa-paper-plane"></i> إعدادات الإرسال</div>
+                
+                <div class="form-group mt-2">
+                    <label for="channel">قناة الإرسال المستهدفة</label>
+                    <select id="channel" name="channel" class="glass-input" required>
+                        <option value="">-- اختر القناة --</option>
+                        <% channels.forEach(c => { %>
+                            <option value="<%= c.id %>"># <%= c.name %></option>
+                        <% }) %>
+                    </select>
+                </div>
+
+                <hr class="divider">
+                <div class="section-title"><i class="fa-solid fa-sliders"></i> تفاصيل محتوى الإمبيد</div>
+
+                <div class="grid-form-2 mt-2">
+                    <div class="form-group">
+                        <label for="author_name">اسم المؤلف (Author Name)</label>
+                        <input type="text" id="author_name" name="author_name" class="glass-input" placeholder="مثال: نظام الإعلانات">
+                    </div>
+                    <div class="form-group">
+                        <label for="author_icon">رابط أيقونة المؤلف (Author Icon URL)</label>
+                        <input type="url" id="author_icon" name="author_icon" class="glass-input" placeholder="https://example.com/icon.png">
+                    </div>
+                </div>
+
+                <div class="grid-form-2">
+                    <div class="form-group">
+                        <label for="title">عنوان الإمبيد الرئيسي</label>
+                        <input type="text" id="title" name="title" class="glass-input" placeholder="اكتب العنوان هنا...">
+                    </div>
+                    <div class="form-group">
+                        <label for="color">لون الشريط الجانبي</label>
+                        <input type="color" id="color" name="color" class="glass-input" value="#5865F2" style="height: 40px; padding: 4px; cursor: pointer;">
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="description">وصف الإمبيد (الوصف الأساسي)</label>
+                    <textarea id="description" name="description" class="glass-input" rows="5" placeholder="محتوى النص الرئيسي (يدعم أكواد التنسيق Markdown)"></textarea>
+                </div>
+
+                <div class="grid-form-2">
+                    <div class="form-group">
+                        <label for="thumbnail">رابط الصورة المصغرة (Thumbnail)</label>
+                        <input type="url" id="thumbnail" name="thumbnail" class="glass-input" placeholder="https://example.com/thumbnail.png">
+                    </div>
+                    <div class="form-group">
+                        <label for="image">رابط الصورة الكبيرة (Big Image)</label>
+                        <input type="url" id="image" name="image" class="glass-input" placeholder="https://example.com/banner.png">
+                    </div>
+                </div>
+
+                <div class="grid-form-2">
+                    <div class="form-group">
+                        <label for="footer_text">نص التذييل (Footer Text)</label>
+                        <input type="text" id="footer_text" name="footer_text" class="glass-input" placeholder="مثال: مشغّل بواسطة E-246">
+                    </div>
+                    <div class="form-group">
+                        <label for="footer_icon">رابط أيقونة التذييل</label>
+                        <input type="url" id="footer_icon" name="footer_icon" class="glass-input" placeholder="https://example.com/footer.png">
+                    </div>
+                </div>
+
+                <div class="form-group d-flex align-items-center gap-2 mt-2 mb-3">
+                    <input type="checkbox" id="timestamp" name="timestamp" value="true" style="width:18px;height:18px;accent-color:#fff;cursor:pointer;">
+                    <label for="timestamp" class="cursor-pointer" style="margin:0; font-weight:500; font-size:0.85rem;">إضافة التوقيت الزمني التلقائي (Timestamp)</label>
+                </div>
+
+                <button type="submit" class="btn btn-primary btn-large btn-block">
+                    <i class="fa-solid fa-paper-plane"></i> إرسال البطاقة الآن
+                </button>
+            </form>
+        </div>
+
+        <!-- Live Preview -->
+        <div class="sticky-preview">
+            <div class="glass-panel">
+                <div class="section-title"><i class="fa-solid fa-eye"></i> معاينة مباشرة</div>
+
+                <div class="discord-preview-container" style="background:#0c0c0c; border: 1px solid var(--border); border-radius: var(--r-md); padding:16px;">
+                    <div class="discord-embed" id="preview_embed" style="background-color:#141414; max-width:100%; border-radius:var(--r-sm); border:1px solid var(--border); border-right: 4px solid #5865F2; border-left: none; padding:16px;">
+                        
+                        <div class="embed-author" id="preview_author_container" style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+                            <img id="preview_author_icon" src="" alt="" style="width:20px; height:20px; border-radius:50%; display:none;">
+                            <span id="preview_author_name" style="font-weight:600; font-size:0.85rem; color:#fff; display:none;"></span>
+                        </div>
+
+                        <div class="embed-content-wrapper" style="display:flex; justify-content:space-between; gap:16px;">
+                            <div class="flex-grow-1" style="min-width:0;">
+                                <div class="embed-title" id="preview_title" style="font-weight:700; font-size:0.95rem; color:#fff; margin-bottom:6px; display:none;"></div>
+                                <div class="embed-description" id="preview_description" style="font-size:0.85rem; color:var(--text-2); line-height:1.5; white-space:pre-wrap; display:none;"></div>
+                            </div>
+                            <img class="embed-thumbnail" id="preview_thumbnail" src="" alt="" style="width:60px; height:60px; border-radius:4px; object-fit:contain; display:none; flex-shrink:0;">
+                        </div>
+
+                        <img class="embed-image" id="preview_image" src="" alt="" style="max-width:100%; max-height:280px; border-radius:4px; margin-top:10px; object-fit:cover; display:none;">
+
+                        <div class="embed-footer" id="preview_footer_container" style="display:flex; align-items:center; gap:6px; margin-top:10px; font-size:0.75rem; color:var(--text-3);">
+                            <img id="preview_footer_icon" src="" alt="" style="width:16px; height:16px; border-radius:50%; display:none;">
+                            <span id="preview_footer_text" style="display:none;"></span>
+                            <span id="preview_timestamp" style="display: none;"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</main>
+
+<script>
+    function updatePreview() {
+        const color = document.getElementById('color').value;
+        const authorName = document.getElementById('author_name').value.trim();
+        const authorIcon = document.getElementById('author_icon').value.trim();
+        const title = document.getElementById('title').value.trim();
+        const description = document.getElementById('description').value.trim();
+        const thumbnail = document.getElementById('thumbnail').value.trim();
+        const image = document.getElementById('image').value.trim();
+        const footerText = document.getElementById('footer_text').value.trim();
+        const footerIcon = document.getElementById('footer_icon').value.trim();
+        const timestamp = document.getElementById('timestamp').checked;
+
+        document.getElementById('preview_embed').style.borderRightColor = color;
+
+        const authorNameEl = document.getElementById('preview_author_name');
+        const authorIconEl = document.getElementById('preview_author_icon');
+        if (authorName) {
+            authorNameEl.textContent = authorName;
+            authorNameEl.style.display = 'inline';
+            if (authorIcon) { authorIconEl.src = authorIcon; authorIconEl.style.display = 'inline'; }
+            else { authorIconEl.style.display = 'none'; }
+        } else {
+            authorNameEl.style.display = 'none';
+            authorIconEl.style.display = 'none';
+        }
+
+        const titleEl = document.getElementById('preview_title');
+        if (title) { titleEl.textContent = title; titleEl.style.display = 'block'; }
+        else { titleEl.style.display = 'none'; }
+
+        const descEl = document.getElementById('preview_description');
+        if (description) { descEl.textContent = description; descEl.style.display = 'block'; }
+        else { descEl.style.display = 'none'; }
+
+        const thumbEl = document.getElementById('preview_thumbnail');
+        if (thumbnail) { thumbEl.src = thumbnail; thumbEl.style.display = 'block'; }
+        else { thumbEl.style.display = 'none'; }
+
+        const imgEl = document.getElementById('preview_image');
+        if (image) { imgEl.src = image; imgEl.style.display = 'block'; }
+        else { imgEl.style.display = 'none'; }
+
+        const fTextEl = document.getElementById('preview_footer_text');
+        const fIconEl = document.getElementById('preview_footer_icon');
+        const tsEl = document.getElementById('preview_timestamp');
+        let hasFooter = false;
+
+        if (footerText) {
+            fTextEl.textContent = footerText;
+            fTextEl.style.display = 'inline';
+            hasFooter = true;
+            if (footerIcon) { fIconEl.src = footerIcon; fIconEl.style.display = 'inline'; }
+            else { fIconEl.style.display = 'none'; }
+        } else {
+            fTextEl.style.display = 'none';
+            fIconEl.style.display = 'none';
+        }
+
+        if (timestamp) {
+            const now = new Date();
+            const timeStr = now.toLocaleTimeString('ar', { hour: '2-digit', minute: '2-digit' });
+            tsEl.textContent = hasFooter ? ' • اليوم الساعة ' + timeStr : 'اليوم الساعة ' + timeStr;
+            tsEl.style.display = 'inline';
+        } else {
+            tsEl.style.display = 'none';
+        }
+    }
+
+    const inputs = ['color', 'author_name', 'author_icon', 'title', 'description', 'thumbnail', 'image', 'footer_text', 'footer_icon'];
+    inputs.forEach(id => document.getElementById(id).addEventListener('input', updatePreview));
+    document.getElementById('timestamp').addEventListener('change', updatePreview);
+    updatePreview();
+</script>
+
+<%- include('partials/footer') %>

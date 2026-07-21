@@ -1,0 +1,111 @@
+<%- include('partials/header') %>
+<%- include('partials/sidebar', { activeTab: 'aliases' }) %>
+
+<main class="app-content">
+    <div class="content-header">
+        <h1><i class="fa-solid fa-link"></i> اختصارات الأوامر</h1>
+        <p>قم بإنشاء كلمات مختصرة وسهلة لتنفيذ أوامر البوت الطويلة (مثال كتابة <code>باند</code> لتنفيذ <code>/ban</code>)</p>
+    </div>
+
+    <!-- Existing Aliases -->
+    <div class="glass-panel reveal">
+        <div class="section-title"><i class="fa-solid fa-link"></i> الاختصارات المفعّلة حالياً</div>
+
+        <% if (typeof req !== 'undefined' && req.query && req.query.success) { %>
+            <div class="alert alert-success"><i class="fa-solid fa-circle-check"></i> <%= req.query.success %></div>
+        <% } %>
+
+        <% if (aliases && aliases.length > 0) { %>
+            <div class="aliases-list">
+                <% aliases.forEach(alias => { %>
+                    <div class="list-item reveal">
+                        <div class="alias-item-details">
+                            <div class="aid-row">
+                                <span class="text-muted">كلمة الاختصار:</span>
+                                <strong class="text-main" style="margin-right: 8px;">« <%= alias.shortcut %> »</strong>
+                            </div>
+                            <div class="aid-row">
+                                <span class="text-muted">ينفّذ أمر:</span>
+                                <strong class="text-main" style="margin-right: 8px;">/<%= alias.command %></strong>
+                            </div>
+                        </div>
+                        <form action="/dashboard/<%= guild.id %>/aliases/delete" method="POST" style="margin:0;">
+                            <input type="hidden" name="shortcut" value="<%= alias.shortcut %>">
+                            <button type="submit" class="btn btn-danger btn-sm" title="حذف الاختصار">
+                                <i class="fa-solid fa-trash"></i> حذف
+                            </button>
+                        </form>
+                    </div>
+                <% }) %>
+            </div>
+        <% } else { %>
+            <div class="empty-state-simple">
+                <i class="fa-solid fa-link"></i>
+                <p>لم يتم تعيين أي اختصارات مخصصة بعد.</p>
+            </div>
+        <% } %>
+    </div>
+
+    <!-- Add Alias Form -->
+    <div class="glass-panel reveal" style="animation-delay: 0.1s;">
+        <div class="section-title"><i class="fa-solid fa-plus"></i> إضافة اختصار جديد</div>
+        <form action="/dashboard/<%= guild.id %>/aliases" method="POST" class="settings-form">
+            <div class="grid-form-2">
+                <div class="form-group">
+                    <label for="shortcut">كلمة الاختصار (Shortcut Word)</label>
+                    <input type="text" id="shortcut" name="shortcut" class="glass-input" required placeholder="مثال: باند أو b">
+                    <small>الكلمة السريعة التي سيكتبها الأعضاء لتشغيل الأمر</small>
+                </div>
+
+                <div class="form-group">
+                    <label for="command">أمر البوت الأساسي (Original Command)</label>
+                    <select id="command" name="command" class="glass-input" required>
+                        <% if (typeof commands !== 'undefined' && commands.length > 0) { %>
+                            <% commands.forEach(cmd => { %>
+                                <option value="<%= cmd %>">/<%= cmd %></option>
+                            <% }) %>
+                        <% } else { %>
+                            <option value="" disabled>لا توجد أوامر محملة</option>
+                        <% } %>
+                    </select>
+                    <small>اختر الأمر الذي سيتم ربطه بكلمة الاختصار</small>
+                </div>
+            </div>
+
+            <button type="submit" class="btn btn-primary mt-2"><i class="fa-solid fa-plus"></i> إضافة الاختصار</button>
+        </form>
+    </div>
+</main>
+
+<style>
+.aliases-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+.alias-item-details {
+    display: flex;
+    gap: 24px;
+    flex-wrap: wrap;
+    font-size: 0.875rem;
+}
+.aid-row {
+    display: flex;
+    align-items: center;
+}
+.empty-state-simple {
+    text-align: center;
+    padding: 32px;
+    color: var(--text-2);
+    border: 1px dashed var(--border);
+    border-radius: var(--r-md);
+}
+.empty-state-simple i {
+    font-size: 2rem;
+    color: var(--text-3);
+    margin-bottom: 12px;
+    display: block;
+}
+</style>
+
+<%- include('partials/footer') %>

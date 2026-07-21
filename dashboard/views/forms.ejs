@@ -1,0 +1,229 @@
+<%- include('partials/header') %>
+<%- include('partials/sidebar', { guild, activeTab: 'forms' }) %>
+
+<main class="app-content">
+    <div class="content-header">
+        <h1><i class="fa-solid fa-clipboard-question"></i> نظام التقديمات</h1>
+        <p>قم بإنشاء وتعديل استمارات التقديم المفتوحة للأعضاء (مثل طلبات الإدارة، طلبات الدعم)</p>
+    </div>
+
+    <% if (typeof success !== 'undefined' && success) { %>
+        <div class="alert alert-success"><i class="fa-solid fa-circle-check"></i> <%= success %></div>
+    <% } %>
+    <% if (typeof error !== 'undefined' && error) { %>
+        <div class="alert alert-danger"><i class="fa-solid fa-triangle-exclamation"></i> <%= error %></div>
+    <% } %>
+
+    <div class="tickets-layout reveal">
+        <!-- settings form -->
+        <div class="glass-panel">
+            <form action="/dashboard/<%= guild.id %>/forms" method="POST" id="formsForm">
+                <div class="section-title"><i class="fa-solid fa-paintbrush"></i> ١. تصميم لوحة التقديم</div>
+                
+                <div class="form-group mt-2">
+                    <label>عنوان الإمبيد الرئيسي</label>
+                    <input type="text" name="title" id="title" class="glass-input" value="<%= settings.panel_data.title || 'التقديم للطاقم الإداري' %>" required>
+                </div>
+                <div class="form-group">
+                    <label>وصف الإمبيد</label>
+                    <textarea name="description" id="description" class="glass-input" rows="3" required><%= settings.panel_data.description || 'اضغط على الزر أدناه لبدء تعبئة نموذج التقديم.' %></textarea>
+                </div>
+                <div class="grid-form-2">
+                    <div class="form-group">
+                        <label>لون الإمبيد</label>
+                        <input type="color" name="color" id="color" class="glass-input" style="height: 40px; padding: 4px; cursor: pointer;" value="<%= settings.panel_data.color || '#5865F2' %>">
+                    </div>
+                    <div class="form-group">
+                        <label>رابط الصورة المصغرة (Thumbnail)</label>
+                        <input type="url" name="thumbnail" id="thumbnail" class="glass-input" placeholder="https://example.com/thumb.png" value="<%= settings.panel_data.thumbnail || '' %>">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>رابط الصورة الكبيرة (Banner Image)</label>
+                    <input type="url" name="image" id="image" class="glass-input" placeholder="https://example.com/banner.png" value="<%= settings.panel_data.image || '' %>">
+                </div>
+
+                <hr class="divider">
+
+                <div class="setting-row" style="margin-bottom:12px;">
+                    <div>
+                        <div class="section-title" style="margin:0;"><i class="fa-solid fa-clipboard-list"></i> ٢. أسئلة نموذج التقديم</div>
+                        <small class="text-muted">الحد الأقصى 5 أسئلة تملؤها نماذج ديسكورد (Modals)</small>
+                    </div>
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="addQuestionRow()"><i class="fa-solid fa-plus"></i> إضافة سؤال</button>
+                </div>
+                
+                <div id="questionsContainer" style="display:flex; flex-direction:column; gap:10px; margin-bottom:20px;"></div>
+                <input type="hidden" name="questions" id="questions_data">
+
+                <hr class="divider">
+
+                <div class="section-title"><i class="fa-solid fa-paper-plane"></i> ٣. القنوات ونشر اللوحة</div>
+                <div class="grid-form-2 mt-2">
+                    <div class="form-group">
+                        <label>قناة استقبال طلبات التقديم</label>
+                        <select name="log_channel" class="glass-input" required>
+                            <option value="">-- اختر القناة --</option>
+                            <% textChannels.forEach(c => { %>
+                                <option value="<%= c.id %>" <%= settings.log_channel === c.id ? 'selected' : '' %>># <%= c.name %></option>
+                            <% }) %>
+                        </select>
+                        <small>القناة التي ستصل إليها إجابات الأعضاء ومراجعتها</small>
+                    </div>
+                    <div class="form-group">
+                        <label>قناة نشر لوحة التقديم</label>
+                        <select name="panel_channel" class="glass-input">
+                            <option value="">-- اختر القناة --</option>
+                            <% textChannels.forEach(c => { %>
+                                <option value="<%= c.id %>"># <%= c.name %></option>
+                            <% }) %>
+                        </select>
+                        <small>القناة التي سيظهر فيها إمبيد التقديم وزر الدخول</small>
+                    </div>
+                </div>
+
+                <div class="form-group d-flex align-items-center gap-2 mt-2 mb-3">
+                    <input type="checkbox" name="send_panel" id="send_panel" value="yes" style="width:18px;height:18px;accent-color:#fff;cursor:pointer;">
+                    <label for="send_panel" class="cursor-pointer" style="margin:0; font-weight:500; font-size:0.85rem;">إرسال / تحديث اللوحة في القناة الآن</label>
+                </div>
+
+                <button type="submit" class="btn btn-primary btn-large btn-block" onclick="prepareSubmit(event)">
+                    <i class="fa-solid fa-floppy-disk"></i> حفظ ونشر التقديمات
+                </button>
+            </form>
+        </div>
+
+        <!-- live preview -->
+        <div class="sticky-preview">
+            <div class="glass-panel">
+                <div class="section-title"><i class="fa-solid fa-eye"></i> معاينة مباشرة</div>
+
+                <div class="discord-preview-container" style="background:#0c0c0c; border: 1px solid var(--border); border-radius: var(--r-md); padding:16px;">
+                    <div class="discord-embed" style="background-color:#141414; max-width:100%; border-radius:var(--r-sm); border:1px solid var(--border); border-right:4px solid #5865F2; border-left:none; padding:16px;">
+                        <div class="d-flex gap-2">
+                            <img src="<%= client.user.displayAvatarURL() %>" style="width:32px; height:32px; border-radius:50%; border:1px solid var(--border);">
+                            <div class="flex-grow-1" style="min-width:0;">
+                                <div class="d-flex align-items-center gap-sm mb-1">
+                                    <span style="color:#fff; font-weight:600; font-size:0.85rem;"><%= client.user.username %></span>
+                                    <span class="bot-tag-preview">BOT</span>
+                                </div>
+                                <div id="preview-embed" style="border-right:4px solid #5865F2; border-left:none; background:#0a0a0a; padding:12px; border-radius:var(--r-sm); border:1px solid var(--border); display:flex; gap:16px; justify-content:space-between;">
+                                    <div class="flex-grow-1" style="min-width:0;">
+                                        <div id="preview-title" style="color:#fff; font-weight:700; font-size:0.95rem; margin-bottom:6px;"></div>
+                                        <div id="preview-desc" style="color:var(--text-2); font-size:0.85rem; line-height:1.5; white-space:pre-wrap;"></div>
+                                        <img id="preview-image" src="" style="max-width:100%; max-height:200px; border-radius:4px; margin-top:10px; object-fit:cover; display:none;">
+                                    </div>
+                                    <img id="preview-thumb" src="" style="width:60px; height:60px; border-radius:4px; object-fit:contain; display:none; flex-shrink:0;">
+                                </div>
+                                <div class="mt-2">
+                                    <div class="discord-button" style="border-radius:var(--r-sm); font-size:0.8rem; padding: 6px 12px; cursor:default; background:#248046;">
+                                        <span>📝</span> <span style="margin-right: 4px;">قدّم الآن</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</main>
+
+<style>
+.question-row {
+    position: relative;
+    background: rgba(255,255,255,0.025);
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    padding: 14px;
+    padding-left: 40px;
+    transition: border-color var(--t-fast);
+}
+.question-row:hover {
+    border-color: var(--border-hover);
+}
+.bot-tag-preview {
+    background: #5865F2;
+    color: #fff;
+    font-size: 0.6rem;
+    padding: 1px 4px;
+    border-radius: 3px;
+    font-weight: 700;
+}
+</style>
+
+<script>
+    const existingQuestions = <%- JSON.stringify(settings.questions || []) %>;
+</script>
+
+<script>
+    const questionsContainer = document.getElementById('questionsContainer');
+    let questionCount = 0;
+
+    function addQuestionRow(questionText = '') {
+        if (questionCount >= 5) {
+            alert('الحد الأقصى هو 5 أسئلة فقط بسبب قيود ديسكورد للـ Modals.');
+            return;
+        }
+        const div = document.createElement('div');
+        div.className = "question-row";
+        div.innerHTML = `
+            <button type="button" onclick="this.parentElement.remove(); questionCount--;" style="position: absolute; top: 12px; left: 12px; background: transparent; border: none; color: var(--danger); cursor: pointer; font-size: 1rem;"><i class="fa-solid fa-trash"></i></button>
+            <div class="form-group" style="margin-bottom: 0;">
+                <label style="font-size: 0.85rem; font-weight:600;">نص السؤال</label>
+                <input type="text" class="glass-input question-input" placeholder="مثال: اذكر خبراتك السابقة في الإشراف..." value="${questionText}" required>
+            </div>
+        `;
+        questionsContainer.appendChild(div);
+        questionCount++;
+    }
+
+    if (existingQuestions.length > 0) {
+        existingQuestions.forEach(q => addQuestionRow(q));
+    } else {
+        addQuestionRow();
+    }
+
+    function prepareSubmit(e) {
+        const inputs = document.querySelectorAll('.question-input');
+        const questionsData = [];
+        inputs.forEach(input => {
+            const val = input.value.trim();
+            if (val) questionsData.push(val);
+        });
+        if (questionsData.length === 0) {
+            e.preventDefault();
+            alert('يجب إضافة سؤال واحد على الأقل للاستمارة');
+            return;
+        }
+        document.getElementById('questions_data').value = JSON.stringify(questionsData);
+    }
+
+    const formInputs = ['title', 'description', 'color', 'thumbnail', 'image'];
+    formInputs.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('input', updatePreview);
+    });
+
+    function updatePreview() {
+        const title = document.getElementById('title').value;
+        const desc = document.getElementById('description').value;
+        const color = document.getElementById('color').value;
+        const thumb = document.getElementById('thumbnail').value;
+        const img = document.getElementById('image').value;
+
+        document.getElementById('preview-embed').style.borderRightColor = color;
+        document.getElementById('preview-title').innerText = title;
+        document.getElementById('preview-desc').innerText = desc;
+
+        const pThumb = document.getElementById('preview-thumb');
+        if (thumb) { pThumb.src = thumb; pThumb.style.display = 'block'; } else { pThumb.style.display = 'none'; }
+
+        const pImg = document.getElementById('preview-image');
+        if (img) { pImg.src = img; pImg.style.display = 'block'; } else { pImg.style.display = 'none'; }
+    }
+
+    updatePreview();
+</script>
+
+<%- include('partials/footer') %>

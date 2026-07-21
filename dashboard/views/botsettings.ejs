@@ -1,0 +1,226 @@
+<%- include('partials/header') %>
+<%- include('partials/sidebar', { activeTab: 'botsettings' }) %>
+
+<main class="app-content">
+    <div class="content-header">
+        <h1><i class="fa-solid fa-robot"></i> إعدادات البوت</h1>
+        <p>تغيير حالة البوت ونشاطه وإعدادات الإيموجيات لجميع السيرفرات</p>
+    </div>
+
+    <% if (typeof req !== 'undefined' && req.query && req.query.success) { %>
+        <div class="alert alert-success"><i class="fa-solid fa-circle-check"></i> <%= req.query.success %></div>
+    <% } %>
+
+    <form action="/dashboard/admin/botsettings" method="POST">
+
+        <!-- Live Preview -->
+        <div class="glass-panel reveal">
+            <div class="section-title"><i class="fa-solid fa-eye"></i> معاينة مباشرة</div>
+            <div class="bot-preview-card">
+                <div class="bot-preview-avatar">
+                    <img src="<%= bot.displayAvatarURL({ extension: 'png', size: 128 }) %>" alt="Bot Avatar">
+                    <div class="bot-preview-status-ring">
+                        <div id="preview-status" class="bps-indicator bps-<%= settings.status %>"></div>
+                    </div>
+                </div>
+                <div class="bot-preview-info">
+                    <div class="bot-preview-name">
+                        <%= bot.username %>
+                        <span class="bot-tag"><i class="fa-solid fa-check" style="font-size:0.55rem;"></i> APP</span>
+                    </div>
+                    <div class="bot-preview-activity">
+                        <span id="preview-type-text" class="bpa-type"><%= settings.activity_type === 'Playing' ? 'Playing' : (settings.activity_type === 'Listening' ? 'Listening to' : (settings.activity_type === 'Watching' ? 'Watching' : (settings.activity_type === 'Competing' ? 'Competing in' : ''))) %></span>
+                        <strong id="preview-activity-name"><%= settings.activity_name %></strong>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Status & Activity -->
+        <div class="glass-panel reveal">
+            <div class="section-title"><i class="fa-solid fa-circle-dot"></i> الحالة والنشاط</div>
+            <div class="grid-form-2">
+                <div class="form-group">
+                    <label for="status">حالة البوت</label>
+                    <select id="status" name="status" class="glass-input">
+                        <option value="online"    <%= settings.status === 'online'    ? 'selected' : '' %>>🟢 متصل (Online)</option>
+                        <option value="idle"      <%= settings.status === 'idle'      ? 'selected' : '' %>>🌙 خامل (Idle)</option>
+                        <option value="dnd"       <%= settings.status === 'dnd'       ? 'selected' : '' %>>🔴 مشغول (Do Not Disturb)</option>
+                        <option value="invisible" <%= settings.status === 'invisible' ? 'selected' : '' %>>⚫ مخفي (Invisible)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="activity_type">نوع النشاط</label>
+                    <select id="activity_type" name="activity_type" class="glass-input">
+                        <option value="Playing"   <%= settings.activity_type === 'Playing'   ? 'selected' : '' %>>🎮 يلعب (Playing)</option>
+                        <option value="Watching"  <%= settings.activity_type === 'Watching'  ? 'selected' : '' %>>📺 يشاهد (Watching)</option>
+                        <option value="Listening" <%= settings.activity_type === 'Listening' ? 'selected' : '' %>>🎧 يستمع (Listening to)</option>
+                        <option value="Competing" <%= settings.activity_type === 'Competing' ? 'selected' : '' %>>🏆 ينافس (Competing in)</option>
+                        <option value="Custom"    <%= settings.activity_type === 'Custom'    ? 'selected' : '' %>>✏️ مخصص (Custom)</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="activity_name">نص النشاط</label>
+                <input type="text" id="activity_name" name="activity_name" class="glass-input"
+                    value="<%= settings.activity_name %>" required placeholder="مثال: أخدم 50 سيرفر">
+            </div>
+        </div>
+
+        <!-- Emoji Color -->
+        <div class="glass-panel reveal">
+            <div class="section-title"><i class="fa-solid fa-palette"></i> لون الإيموجيات</div>
+            <div class="form-group">
+                <label for="emoji_color">ثيم الإيموجيات</label>
+                <select id="emoji_color" name="emoji_color" class="glass-input" onchange="updateEmojiPreview(this.value)">
+                    <option value="blue"   <%= settings.emoji_color === 'blue'   ? 'selected' : '' %>>🔵 الأزرق (افتراضي)</option>
+                    <option value="red"    <%= settings.emoji_color === 'red'    ? 'selected' : '' %>>🔴 الأحمر بريميوم</option>
+                    <option value="green"  <%= settings.emoji_color === 'green'  ? 'selected' : '' %>>🟢 الأخضر بريميوم</option>
+                    <option value="purple" <%= settings.emoji_color === 'purple' ? 'selected' : '' %>>🟣 البنفسجي بريميوم</option>
+                    <option value="gold"   <%= settings.emoji_color === 'gold'   ? 'selected' : '' %>>🟡 الذهبي الملكي</option>
+                    <option value="pink"   <%= settings.emoji_color === 'pink'   ? 'selected' : '' %>>🩷 الوردي الفاخر</option>
+                </select>
+                <div class="emoji-preview-row mt-1">
+                    <span class="text-muted" style="font-size:0.8rem;">معاينة:</span>
+                    <img id="prev_check"  src="/assets/emojis/<%= settings.emoji_color || 'blue' %>/circlecheck.png"  style="width:28px;height:28px;">
+                    <img id="prev_x"      src="/assets/emojis/<%= settings.emoji_color || 'blue' %>/circlex.png"      style="width:28px;height:28px;">
+                    <img id="prev_shield" src="/assets/emojis/<%= settings.emoji_color || 'blue' %>/shieldcheck.png"  style="width:28px;height:28px;">
+                    <img id="prev_lock"   src="/assets/emojis/<%= settings.emoji_color || 'blue' %>/lock.png"         style="width:28px;height:28px;">
+                </div>
+            </div>
+        </div>
+
+        <!-- Broadcast Tokens -->
+        <div class="glass-panel reveal">
+            <div class="section-title"><i class="fa-solid fa-satellite-dish"></i> مساعدو البرودكاست</div>
+            <div class="form-group">
+                <label for="broadcast_tokens">توكنات البوتات المساعدة</label>
+                <textarea id="broadcast_tokens" name="broadcast_tokens" class="glass-input"
+                    rows="5" placeholder="أدخل توكن بوت في كل سطر..."
+                    style="font-family: 'Fira Code', monospace; font-size: 0.82rem; resize: vertical;"><%= Array.isArray(settings.broadcast_tokens) ? settings.broadcast_tokens.join('\n') : '' %></textarea>
+                <small>كل سطر = توكن بوت واحد. يجب أن تكون هذه البوتات موجودة في السيرفر لترسل للأعضاء.</small>
+            </div>
+        </div>
+
+        <button type="submit" class="btn btn-primary"><i class="fa-solid fa-floppy-disk"></i> تطبيق التغييرات</button>
+    </form>
+
+</main>
+
+<style>
+/* Bot Preview Card */
+.bot-preview-card {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    background: #111;
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    padding: 16px 20px;
+}
+.bot-preview-avatar {
+    position: relative;
+    width: 64px;
+    height: 64px;
+    flex-shrink: 0;
+}
+.bot-preview-avatar img {
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 2px solid var(--border);
+}
+.bot-preview-status-ring {
+    position: absolute;
+    bottom: -2px;
+    right: -2px;
+    width: 22px;
+    height: 22px;
+    background: #111;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.bps-indicator {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+}
+.bps-online    { background: #23a559; }
+.bps-idle      { background: #f0b232; }
+.bps-dnd       { background: #f23f43; }
+.bps-invisible { background: #80848e; }
+
+.bot-preview-info { display: flex; flex-direction: column; gap: 5px; }
+.bot-preview-name {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--text-1);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.bot-tag {
+    background: #5865F2;
+    color: #fff;
+    font-size: 0.6rem;
+    font-weight: 700;
+    padding: 2px 5px;
+    border-radius: 3px;
+    letter-spacing: 0.3px;
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+}
+.bot-preview-activity {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.875rem;
+}
+.bpa-type { color: var(--text-2); }
+
+.emoji-preview-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid var(--border);
+    border-radius: var(--r-sm);
+}
+</style>
+
+<script>
+/* Emoji Preview */
+function updateEmojiPreview(color) {
+    const base = '/assets/emojis/' + color + '/';
+    document.getElementById('prev_check').src  = base + 'circlecheck.png';
+    document.getElementById('prev_x').src      = base + 'circlex.png';
+    document.getElementById('prev_shield').src = base + 'shieldcheck.png';
+    document.getElementById('prev_lock').src   = base + 'lock.png';
+}
+
+/* Live Preview */
+const statusSelect = document.getElementById('status');
+const typeSelect   = document.getElementById('activity_type');
+const nameInput    = document.getElementById('activity_name');
+const previewStatus   = document.getElementById('preview-status');
+const previewTypeText = document.getElementById('preview-type-text');
+const previewName     = document.getElementById('preview-activity-name');
+
+statusSelect.addEventListener('change', (e) => {
+    previewStatus.className = 'bps-indicator bps-' + e.target.value;
+});
+typeSelect.addEventListener('change', (e) => {
+    const map = { Playing: 'Playing', Listening: 'Listening to', Watching: 'Watching', Competing: 'Competing in', Custom: '' };
+    previewTypeText.textContent = map[e.target.value] || '';
+});
+nameInput.addEventListener('input', (e) => {
+    previewName.textContent = e.target.value;
+});
+</script>
+
+<%- include('partials/footer') %>

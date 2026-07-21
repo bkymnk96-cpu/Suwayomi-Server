@@ -1,0 +1,205 @@
+<%- include('partials/header') %>
+<%- include('partials/sidebar', { guild, activeTab: 'captcha' }) %>
+
+<main class="app-content">
+    <div class="content-header">
+        <h1><i class="fa-solid fa-shield-cat"></i> نظام التحقق البشري</h1>
+        <p>تفعيل بوابات التحقق لحماية السيرفر من هجمات البوتات والرايدز تلقائياً</p>
+    </div>
+
+    <% if (typeof success !== 'undefined' && success) { %>
+        <div class="alert alert-success"><i class="fa-solid fa-circle-check"></i> <%= success %></div>
+    <% } %>
+    <% if (typeof error !== 'undefined' && error) { %>
+        <div class="alert alert-danger"><i class="fa-solid fa-triangle-exclamation"></i> <%= error %></div>
+    <% } %>
+
+    <div class="tickets-layout reveal">
+        <!-- settings form -->
+        <div class="glass-panel">
+            <form action="/dashboard/<%= guild.id %>/captcha" method="POST">
+                <div class="section-title"><i class="fa-solid fa-circle-dot"></i> ١. الحالة والرتب</div>
+                
+                <div class="form-group mt-2">
+                    <label>حالة نظام التحقق</label>
+                    <select name="enabled" class="glass-input">
+                        <option value="1" <%= settings.enabled === 1 ? 'selected' : '' %>>🟢 مفعّل</option>
+                        <option value="0" <%= settings.enabled === 0 ? 'selected' : '' %>>🔴 معطّل</option>
+                    </select>
+                </div>
+
+                <div class="grid-form-2">
+                    <div class="form-group">
+                        <label>رتبة المتحقق (تعطى عند النجاح)</label>
+                        <select name="verified_role" class="glass-input" required>
+                            <option value="">-- اختر الرتبة --</option>
+                            <% roles.forEach(r => { %>
+                                <option value="<%= r.id %>" <%= settings.verified_role === r.id ? 'selected' : '' %>>@<%= r.name %></option>
+                            <% }) %>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>رتبة غير المتحقق (تزال عند النجاح - اختياري)</label>
+                        <select name="unverified_role" class="glass-input">
+                            <option value="">-- لا شيء --</option>
+                            <% roles.forEach(r => { %>
+                                <option value="<%= r.id %>" <%= settings.unverified_role === r.id ? 'selected' : '' %>>@<%= r.name %></option>
+                            <% }) %>
+                        </select>
+                    </div>
+                </div>
+
+                <hr class="divider">
+
+                <div class="section-title"><i class="fa-solid fa-palette"></i> ٢. تصميم لوحة التحقق</div>
+
+                <div class="form-group mt-2">
+                    <label>عنوان الإمبيد</label>
+                    <input type="text" name="title" id="title" class="glass-input" value="<%= settings.panel_data.title || 'التحقق البشري' %>" required>
+                </div>
+
+                <div class="form-group">
+                    <label>وصف الإمبيد</label>
+                    <textarea name="description" id="description" class="glass-input" rows="3" required><%= settings.panel_data.description || 'للوصول إلى السيرفر، اضغط على الزر أدناه وأكمل التحقق البشري.' %></textarea>
+                </div>
+
+                <div class="grid-form-2">
+                    <div class="form-group">
+                        <label>لون الإمبيد</label>
+                        <input type="color" name="color" id="color" class="glass-input" style="height: 40px; padding: 4px; cursor: pointer;" value="<%= settings.panel_data.color || '#57F287' %>">
+                    </div>
+                    <div class="form-group">
+                        <label>نص الزر</label>
+                        <input type="text" name="btn_text" id="btn_text" class="glass-input" value="<%= settings.panel_data.btn_text || 'تحقق الآن' %>" required>
+                    </div>
+                </div>
+
+                <div class="grid-form-2">
+                    <div class="form-group">
+                        <label>إيموجي الزر</label>
+                        <input type="text" name="btn_emoji" id="btn_emoji" class="glass-input" value="<%= settings.panel_data.btn_emoji || '✅' %>">
+                    </div>
+                    <div class="form-group">
+                        <label>لون الزر</label>
+                        <select name="btn_style" id="btn_style" class="glass-input">
+                            <option value="Primary" <%= settings.panel_data.btn_style === 'Primary' ? 'selected' : '' %>>أزرق بنفسجي</option>
+                            <option value="Success" <%= settings.panel_data.btn_style === 'Success' ? 'selected' : (!settings.panel_data.btn_style ? 'selected' : '') %>>أخضر</option>
+                            <option value="Danger" <%= settings.panel_data.btn_style === 'Danger' ? 'selected' : '' %>>أحمر</option>
+                            <option value="Secondary" <%= settings.panel_data.btn_style === 'Secondary' ? 'selected' : '' %>>رمادي</option>
+                        </select>
+                    </div>
+                </div>
+
+                <hr class="divider">
+
+                <div class="section-title"><i class="fa-solid fa-paper-plane"></i> ٣. نشر اللوحة</div>
+
+                <div class="form-group mt-2">
+                    <label>قناة نشر لوحة التحقق</label>
+                    <select name="panel_channel" class="glass-input">
+                        <option value="">-- اختر القناة --</option>
+                        <% textChannels.forEach(c => { %>
+                            <option value="<%= c.id %>" <%= settings.panel_channel === c.id ? 'selected' : '' %>># <%= c.name %></option>
+                        <% }) %>
+                    </select>
+                </div>
+
+                <div class="form-group d-flex align-items-center gap-2 mt-2 mb-3">
+                    <input type="checkbox" name="send_panel" id="send_panel" value="yes" style="width:18px;height:18px;accent-color:#fff;cursor:pointer;">
+                    <label for="send_panel" class="cursor-pointer" style="margin:0; font-weight:500; font-size:0.85rem;">إرسال / تحديث اللوحة في القناة الآن</label>
+                </div>
+
+                <button type="submit" class="btn btn-primary btn-large btn-block">
+                    <i class="fa-solid fa-floppy-disk"></i> حفظ الإعدادات
+                </button>
+            </form>
+        </div>
+
+        <!-- live preview -->
+        <div class="sticky-preview">
+            <div class="glass-panel">
+                <div class="section-title"><i class="fa-solid fa-eye"></i> معاينة مباشرة للوحة</div>
+                
+                <div class="discord-preview-container" style="background:#0c0c0c; border: 1px solid var(--border); border-radius: var(--r-md); padding:16px;">
+                    <div class="discord-embed" style="background-color:#141414; max-width:100%; border-radius:var(--r-sm); border:1px solid var(--border);">
+                        <div class="d-flex gap-2">
+                            <img src="<%= client.user.displayAvatarURL() %>" style="width: 32px; height: 32px; border-radius: 50%; border:1px solid var(--border);">
+                            <div class="flex-grow-1">
+                                <div class="d-flex align-items-center gap-sm mb-1">
+                                    <span style="color: #fff; font-weight: 600; font-size: 0.85rem;"><%= client.user.username %></span>
+                                    <span class="bot-tag-preview">BOT</span>
+                                </div>
+                                <div id="preview-embed" style="border-right: 4px solid #57F287; background: #0a0a0a; padding: 12px; border-radius: var(--r-sm); border:1px solid var(--border);">
+                                    <div id="preview-title" style="color: #fff; font-weight: 700; font-size: 0.95rem; margin-bottom: 6px;"></div>
+                                    <div id="preview-desc" style="color: var(--text-2); font-size: 0.85rem; white-space: pre-wrap; line-height: 1.5;"></div>
+                                </div>
+                                <div class="mt-2">
+                                    <div id="preview-btn" class="discord-button" style="border-radius:var(--r-sm); font-size:0.8rem; padding: 6px 12px; cursor:default;">
+                                        <span id="preview-btn-emoji">✅</span> <span id="preview-btn-text">تحقق الآن</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</main>
+
+<style>
+.bot-tag-preview {
+    background: #5865F2;
+    color: #fff;
+    font-size: 0.6rem;
+    padding: 1px 4px;
+    border-radius: 3px;
+    font-weight: 700;
+}
+#preview-embed {
+    /* Right border instead of left border since we are RTL (dir=rtl) */
+    border-right: 4px solid #57F287 !important;
+    border-left: none !important;
+}
+</style>
+
+<script>
+    const formInputs = ['title', 'description', 'color', 'btn_text', 'btn_emoji', 'btn_style'];
+    formInputs.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('input', updatePreview);
+    });
+
+    function updatePreview() {
+        const title = document.getElementById('title').value;
+        const desc = document.getElementById('description').value;
+        const color = document.getElementById('color').value;
+        const btnText = document.getElementById('btn_text').value;
+        const btnEmoji = document.getElementById('btn_emoji').value;
+        const btnStyle = document.getElementById('btn_style').value;
+
+        document.getElementById('preview-embed').style.borderRightColor = color;
+        document.getElementById('preview-title').innerText = title;
+        document.getElementById('preview-desc').innerText = desc;
+        document.getElementById('preview-btn-text').innerText = btnText || 'تحقق الآن';
+
+        const emojiEl = document.getElementById('preview-btn-emoji');
+        if (btnEmoji) { 
+            emojiEl.innerText = btnEmoji; 
+            emojiEl.style.display = 'inline-block'; 
+            emojiEl.style.marginLeft = '4px';
+        } else { 
+            emojiEl.style.display = 'none'; 
+        }
+
+        const btnEl = document.getElementById('preview-btn');
+        if (btnStyle === 'Primary') btnEl.style.background = '#5865F2';
+        else if (btnStyle === 'Success') btnEl.style.background = '#23a559';
+        else if (btnStyle === 'Danger') btnEl.style.background = '#da373c';
+        else if (btnStyle === 'Secondary') btnEl.style.background = '#4f545c';
+    }
+
+    updatePreview();
+</script>
+
+<%- include('partials/footer') %>

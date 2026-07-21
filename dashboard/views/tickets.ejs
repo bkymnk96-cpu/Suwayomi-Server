@@ -1,0 +1,830 @@
+<%- include('partials/header') %>
+
+<%
+settings = typeof settings !== 'undefined' && settings ? settings : {};
+let pData = {};
+try { pData = JSON.parse(settings.panel_data || '{}'); } catch(e) {}
+%>
+
+<%- include('partials/sidebar', { activeTab: 'tickets' }) %>
+
+<main class="app-content">
+
+    <div class="content-header">
+        <h1><i class="fa-solid fa-ticket"></i> منشئ نظام التذاكر</h1>
+        <p>قم بتهيئة وتصميم نظام تذاكر متكامل (الدعم الفني، الشكاوى) في سيرفرك</p>
+    </div>
+
+    <% if (typeof success !== 'undefined' && success) { %>
+        <div class="alert alert-success"><i class="fa-solid fa-circle-check"></i> تم حفظ إعدادات التذاكر بنجاح</div>
+    <% } %>
+
+    <div class="tickets-layout reveal">
+        
+        <!-- Form Section (Right Column) -->
+        <div>
+            <form action="/dashboard/<%= guild.id %>/tickets" method="POST" class="settings-form">
+
+                <!-- 1. Basic Settings -->
+                <div class="glass-panel">
+                    <div class="section-title"><i class="fa-solid fa-sliders"></i> ١. الإعدادات الأساسية</div>
+                    
+                    <div class="grid-form-2 mt-2">
+                        <div class="form-group">
+                            <label>تصنيف التذاكر (Category)</label>
+                            <select name="category_id" class="glass-input">
+                                <option value="">-- اختر القسم --</option>
+                                <% categories.forEach(c => { %>
+                                    <option value="<%= c.id %>" <%= settings.category_id === c.id ? 'selected' : '' %>><%= c.name %></option>
+                                <% }) %>
+                            </select>
+                            <small>القسم الذي سيتم إنشاء قنوات التذاكر بداخله</small>
+                        </div>
+                        <div class="form-group">
+                            <label>رتبة طاقم الدعم (Support Role)</label>
+                            <select name="staff_role" class="glass-input">
+                                <option value="">-- اختر الرتبة --</option>
+                                <% roles.forEach(r => { %>
+                                    <option value="<%= r.id %>" <%= settings.staff_role === r.id ? 'selected' : '' %>><%= r.name %></option>
+                                <% }) %>
+                            </select>
+                            <small>الرتبة التي يسمح لها برؤية والتفاعل مع التذاكر</small>
+                        </div>
+                    </div>
+
+                    <div class="grid-form-2">
+                        <div class="form-group">
+                            <label>رتبة الإدارة العليا (Owners/Admin Role)</label>
+                            <select name="owners_role" class="glass-input">
+                                <option value="">-- اختر الرتبة --</option>
+                                <% roles.forEach(r => { %>
+                                    <option value="<%= r.id %>" <%= settings.owners_role === r.id ? 'selected' : '' %>><%= r.name %></option>
+                                <% }) %>
+                            </select>
+                            <small>الرتبة التي يمكنها إجراء التعديلات الإدارية للتذكرة</small>
+                        </div>
+                        <div class="form-group">
+                            <label>قناة سجل التذاكر (Ticket Logs)</label>
+                            <select name="log_channel" class="glass-input">
+                                <option value="">-- اختر القناة --</option>
+                                <% channels.forEach(c => { %>
+                                    <option value="<%= c.id %>" <%= settings.log_channel === c.id ? 'selected' : '' %>><%= c.name %></option>
+                                <% }) %>
+                            </select>
+                            <small>القناة التي ستُرسل إليها نصوص التذاكر المغلقة (Transcripts)</small>
+                        </div>
+                    </div>
+
+                    <div class="grid-form-2">
+                        <div class="form-group">
+                            <label>روم تقييم الإدارة (Feedbacks)</label>
+                            <select name="feedbacks_channel" class="glass-input">
+                                <option value="">-- اختر القناة --</option>
+                                <% channels.forEach(c => { %>
+                                    <option value="<%= c.id %>" <%= settings.feedbacks_channel === c.id ? 'selected' : '' %>><%= c.name %></option>
+                                <% }) %>
+                            </select>
+                            <small>القناة التي سيصل فيها تقييم العضو ورأيه بعد إغلاق التذكرة</small>
+                        </div>
+                        <div class="form-group">
+                            <label>قناة نشر لوحة فتح التذاكر</label>
+                            <select name="panel_channel" class="glass-input">
+                                <option value="">-- اختر القناة --</option>
+                                <% channels.forEach(c => { %>
+                                    <option value="<%= c.id %>" <%= settings.panel_channel === c.id ? 'selected' : '' %>><%= c.name %></option>
+                                <% }) %>
+                            </select>
+                            <small>القناة التي سيظهر فيها إمبيد وزر فتح التذكرة للأعضاء</small>
+                        </div>
+                    </div>
+
+                    <div class="form-group mt-2">
+                        <label for="ticket_message">رسالة الترحيب الافتراضية للتذكرة</label>
+                        <textarea id="ticket_message" name="ticket_message" class="glass-input" rows="2" placeholder="مثال: مرحباً بك في تذكرتك، سيقوم أحد الإداريين بالرد عليك قريباً."><%= settings.ticket_message || '' %></textarea>
+                        <small>تظهر كرسالة أولى عند فتح التذكرة مباشرة</small>
+                    </div>
+                </div>
+
+                <!-- 2. Interactive Component -->
+                <div class="glass-panel mt-3">
+                    <div class="section-title"><i class="fa-solid fa-layer-group"></i> ٢. نوع المكوّن التفاعلي</div>
+                    
+                    <div class="grid-form-2 mt-2">
+                        <div class="form-group">
+                            <label>نوع المكوّن</label>
+                            <select id="comp_type" name="comp_type" class="glass-input">
+                                <option value="button" <%= pData.comp_type === 'button' ? 'selected' : '' %>>🔘 زر (Button)</option>
+                                <option value="select" <%= pData.comp_type === 'select' ? 'selected' : '' %>>🗂️ قائمة منسدلة (Select Menu)</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>نص الزر/الخيار</label>
+                            <input type="text" id="comp_label" name="comp_label" class="glass-input" value="<%= pData.label || 'افتح تذكرة' %>">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>إيموجي الزر/الخيار</label>
+                        <input type="text" id="comp_emoji" name="comp_emoji" class="glass-input" value="<%= pData.emoji || '🎫' %>">
+                    </div>
+                </div>
+
+                <!-- 3. Panel Embed Design -->
+                <div class="glass-panel mt-3">
+                    <div class="section-title"><i class="fa-solid fa-palette"></i> ٣. تصميم إمبيد اللوحة</div>
+                    
+                    <div class="grid-form-2 mt-2">
+                        <div class="form-group">
+                            <label>عنوان الإمبيد</label>
+                            <input type="text" id="title" name="title" class="glass-input" value="<%= pData.title || 'دعم فني' %>">
+                        </div>
+                        <div class="form-group">
+                            <label>اللون الجانبي</label>
+                            <input type="color" id="color" name="color" class="glass-input" value="<%= pData.color || '#5865F2' %>" style="height: 40px; padding: 4px; cursor: pointer;">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>وصف الإمبيد</label>
+                        <textarea id="description" name="description" class="glass-input" rows="3"><%= pData.description || 'اضغط على الزر أدناه لفتح تذكرة وبدء محادثة مع طاقم الدعم!' %></textarea>
+                    </div>
+                    <div class="grid-form-2">
+                        <div class="form-group">
+                            <label>رابط الصورة المصغرة (Thumbnail)</label>
+                            <input type="url" id="thumbnail" name="thumbnail" class="glass-input" value="<%= pData.thumbnail || '' %>" placeholder="https://...">
+                        </div>
+                        <div class="form-group">
+                            <label>رابط الصورة الكبيرة (Banner)</label>
+                            <input type="url" id="image" name="image" class="glass-input" value="<%= pData.image || '' %>" placeholder="https://...">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 4. Ticket Control Panel -->
+                <div class="glass-panel mt-3">
+                    <div class="section-title"><i class="fa-solid fa-toolbox"></i> ٤. لوحة التحكم داخل التذكرة</div>
+                    
+                    <div class="form-group mt-2">
+                        <label>نوع لوحة التحكم داخل التذكرة للـ Staff</label>
+                        <select id="panel_mode" name="panel_mode" class="glass-input">
+                            <option value="simple" <%= pData.panel_mode === 'simple' ? 'selected' : '' %>>⚙️ لوحة مبسطة (أزرار أساسية)</option>
+                            <option value="advanced" <%= pData.panel_mode === 'advanced' ? 'selected' : '' %>>🛠️ لوحة متقدمة (تحكم كامل)</option>
+                        </select>
+                    </div>
+
+                    <div id="simple_panel_box" class="info-box mt-2">
+                        <strong>اللوحة المبسطة تحتوي على الأزرار الأساسية الآتية:</strong>
+                        <ul class="mt-1" style="padding-right:20px; font-size: 0.85rem; line-height: 1.6;">
+                            <li>استلام التذكرة (Claim)</li>
+                            <li>إغلاق التذكرة (Close)</li>
+                            <li>إضافة عضو للتذكرة</li>
+                            <li>إزالة عضو من التذكرة</li>
+                        </ul>
+                    </div>
+
+                    <div id="advanced_panel_box" class="mt-2" style="display:none;">
+                        <div class="glass-panel" style="background:rgba(255,255,255,0.01);">
+                            <h4 class="mb-2" style="font-size:0.9rem; font-weight:600;"><i class="fa-solid fa-list-check"></i> إعدادات الأزرار الجاهزة للوحة المتقدمة</h4>
+                            <div class="preset-actions-list">
+                                <div class="preset-row">
+                                    <span>نداء العضو صاحب التذكرة</span>
+                                    <select name="call_user" class="glass-input action-display" data-action="call_user">
+                                        <option value="none" <%= pData.call_user === 'none' ? 'selected' : '' %>>إخفاء</option>
+                                        <option value="button" <%= pData.call_user === 'button' ? 'selected' : '' %>>زر منفصل</option>
+                                        <option value="menu" <%= pData.call_user === 'menu' ? 'selected' : '' %>>خيار قائمة</option>
+                                    </select>
+                                </div>
+                                <div class="preset-row">
+                                    <span>نداء طاقم الدعم الفني</span>
+                                    <select name="call_support" class="glass-input action-display" data-action="call_support">
+                                        <option value="none" <%= pData.call_support === 'none' ? 'selected' : '' %>>إخفاء</option>
+                                        <option value="button" <%= pData.call_support === 'button' ? 'selected' : '' %>>زر منفصل</option>
+                                        <option value="menu" <%= pData.call_support === 'menu' ? 'selected' : '' %>>خيار قائمة</option>
+                                    </select>
+                                </div>
+                                <div class="preset-row">
+                                    <span>نداء الإدارة العليا للتحكيم</span>
+                                    <select name="call_owners" class="glass-input action-display" data-action="call_owners">
+                                        <option value="none" <%= pData.call_owners === 'none' ? 'selected' : '' %>>إخفاء</option>
+                                        <option value="button" <%= pData.call_owners === 'button' ? 'selected' : '' %>>زر منفصل</option>
+                                        <option value="menu" <%= pData.call_owners === 'menu' ? 'selected' : '' %>>خيار قائمة</option>
+                                    </select>
+                                </div>
+                                <div class="preset-row">
+                                    <span>إرسال تحذير للعضو بالتذكرة</span>
+                                    <select name="warn_user" class="glass-input action-display" data-action="warn_user">
+                                        <option value="none" <%= pData.warn_user === 'none' ? 'selected' : '' %>>إخفاء</option>
+                                        <option value="button" <%= pData.warn_user === 'button' ? 'selected' : '' %>>زر منفصل</option>
+                                        <option value="menu" <%= pData.warn_user === 'menu' ? 'selected' : '' %>>خيار قائمة</option>
+                                    </select>
+                                </div>
+                                <div class="preset-row">
+                                    <span>إضافة العضو للقائمة السوداء للتذاكر</span>
+                                    <select name="blacklist_user" class="glass-input action-display" data-action="blacklist_user">
+                                        <option value="none" <%= pData.blacklist_user === 'none' ? 'selected' : '' %>>إخفاء</option>
+                                        <option value="button" <%= pData.blacklist_user === 'button' ? 'selected' : '' %>>زر منفصل</option>
+                                        <option value="menu" <%= pData.blacklist_user === 'menu' ? 'selected' : '' %>>خيار قائمة</option>
+                                    </select>
+                                </div>
+                                <div class="preset-row">
+                                    <span>تغيير اسم التذكرة سريعاً</span>
+                                    <select name="rename_ticket" class="glass-input action-display" data-action="rename_ticket">
+                                        <option value="none" <%= pData.rename_ticket === 'none' ? 'selected' : '' %>>إخفاء</option>
+                                        <option value="button" <%= pData.rename_ticket === 'button' ? 'selected' : '' %>>زر منفصل</option>
+                                        <option value="menu" <%= pData.rename_ticket === 'menu' ? 'selected' : '' %>>خيار قائمة</option>
+                                    </select>
+                                </div>
+                                <div class="preset-row">
+                                    <span>قفل التذكرة لمنع الكتابة (Lock)</span>
+                                    <select name="lock_ticket" class="glass-input action-display" data-action="lock_ticket">
+                                        <option value="none" <%= pData.lock_ticket === 'none' ? 'selected' : '' %>>إخفاء</option>
+                                        <option value="button" <%= pData.lock_ticket === 'button' ? 'selected' : '' %>>زر منفصل</option>
+                                        <option value="menu" <%= pData.lock_ticket === 'menu' ? 'selected' : '' %>>خيار قائمة</option>
+                                    </select>
+                                </div>
+                                <div class="preset-row">
+                                    <span>إلغاء قفل التذكرة (Unlock)</span>
+                                    <select name="unlock_ticket" class="glass-input action-display" data-action="unlock_ticket">
+                                        <option value="none" <%= pData.unlock_ticket === 'none' ? 'selected' : '' %>>إخفاء</option>
+                                        <option value="button" <%= pData.unlock_ticket === 'button' ? 'selected' : '' %>>زر منفصل</option>
+                                        <option value="menu" <%= pData.unlock_ticket === 'menu' ? 'selected' : '' %>>خيار قائمة</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Custom Buttons inside Ticket -->
+                <div class="glass-panel mt-3">
+                    <div class="setting-row">
+                        <div class="section-title" style="margin:0;"><i class="fa-solid fa-circle-dot"></i> أزرار ترحيب مخصصة داخل التذكرة (٣ كحد أقصى)</div>
+                        <button type="button" id="add_custom_button" class="btn btn-secondary btn-sm">
+                            <i class="fa-solid fa-plus"></i> إضافة زر
+                        </button>
+                    </div>
+                    <small class="text-muted">هذه الأزرار ترسل ردوداً مخفية (Ephemeral) مجهزة للعضو عند الضغط عليها</small>
+                    <div id="custom_buttons_container" class="mt-2" style="display:flex; flex-direction:column; gap:12px;"></div>
+                </div>
+
+                <!-- Custom Menus inside Ticket -->
+                <div class="glass-panel mt-3">
+                    <div class="setting-row">
+                        <div class="section-title" style="margin:0;"><i class="fa-solid fa-list"></i> قوائم خيارات ترحيب مخصصة (٣ كحد أقصى)</div>
+                        <button type="button" id="add_custom_menu" class="btn btn-secondary btn-sm">
+                            <i class="fa-solid fa-plus"></i> إضافة قائمة
+                        </button>
+                    </div>
+                    <small class="text-muted">كل خيار في القائمة المنسدلة يرسل رداً مخفياً (Ephemeral) مجهزاً للعضو</small>
+                    <div id="custom_menus_container" class="mt-2" style="display:flex; flex-direction:column; gap:12px;"></div>
+                </div>
+
+                <!-- Welcome Message Style inside Ticket -->
+                <div class="glass-panel mt-3">
+                    <div class="section-title"><i class="fa-solid fa-palette"></i> ٥. شكل الرسالة الترحيبية داخل التذكرة</div>
+                    
+                    <div class="form-group mt-2">
+                        <label>نوع رسالة الترحيب المفتوحة</label>
+                        <select id="ticket_msg_type" class="glass-input">
+                            <option value="embed" <%= pData.ticket_message_style?.type === "embed" ? "selected" : "" %>>بطاقة مدمجة (Embed)</option>
+                            <option value="plain" <%= pData.ticket_message_style?.type === "plain" ? "selected" : "" %>>رسالة نصية عادية (Plain Text)</option>
+                            <option value="container" <%= pData.ticket_message_style?.type === "container" ? "selected" : "" %>>حاوية أنيقة (Container V2)</option>
+                        </select>
+                    </div>
+
+                    <!-- Embed Settings -->
+                    <div id="ticket_embed_settings" class="mt-2" style="display:none; background:rgba(255,255,255,0.015); border:1px solid var(--border); border-radius:var(--r-md); padding:14px;">
+                        <div class="form-group">
+                            <label>عنوان بطاقة الترحيب</label>
+                            <input type="text" id="ticket_embed_title" class="glass-input" value="<%= pData.ticket_message_style?.embed?.title || '' %>" placeholder="مثال: تذكرة دعم فني جديدة">
+                        </div>
+                        <div class="form-group">
+                            <label>وصف بطاقة الترحيب</label>
+                            <textarea id="ticket_embed_description" class="glass-input" rows="3" placeholder="مرحباً بك {user}..."><%= pData.ticket_message_style?.embed?.description || '' %></textarea>
+                            <small>المتغيرات المتاحة: <code>{user}</code> <code>{user_tag}</code> <code>{server}</code> <code>{ticket}</code></small>
+                        </div>
+                        <div class="grid-form-2">
+                            <div class="form-group">
+                                <label>اللون</label>
+                                <input type="color" id="ticket_embed_color" class="glass-input" value="<%= pData.ticket_message_style?.embed?.color || '#5865F2' %>" style="height:40px; padding:4px;">
+                            </div>
+                            <div class="form-group">
+                                <label>رابط الصورة المصغرة</label>
+                                <input type="url" id="ticket_embed_thumbnail" class="glass-input" value="<%= pData.ticket_message_style?.embed?.thumbnail || '' %>">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>رابط الصورة الكبيرة</label>
+                            <input type="url" id="ticket_embed_image" class="glass-input" value="<%= pData.ticket_message_style?.embed?.image || '' %>">
+                        </div>
+                        <div class="grid-form-2">
+                            <div class="form-group">
+                                <label>نص التذييل (Footer)</label>
+                                <input type="text" id="ticket_embed_footer" class="glass-input" value="<%= pData.ticket_message_style?.embed?.footer || '' %>">
+                            </div>
+                            <div class="form-group">
+                                <label>أيقونة التذييل</label>
+                                <input type="url" id="ticket_embed_footer_icon" class="glass-input" value="<%= pData.ticket_message_style?.embed?.footer_icon || '' %>">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Plain Text Settings -->
+                    <div id="ticket_plain_settings" class="mt-2" style="display:none; background:rgba(255,255,255,0.015); border:1px solid var(--border); border-radius:var(--r-md); padding:14px;">
+                        <div class="form-group" style="margin:0;">
+                            <label>محتوى الرسالة الترحيبية</label>
+                            <textarea id="ticket_plain_content" class="glass-input" rows="4" placeholder="اكتب النص هنا..."><%= pData.ticket_message_style?.plain?.content || '' %></textarea>
+                            <small>المتغيرات المتاحة: <code>{user}</code> <code>{server}</code></small>
+                        </div>
+                    </div>
+
+                    <!-- Container Settings -->
+                    <div id="ticket_container_settings" class="mt-2" style="display:none; background:rgba(255,255,255,0.015); border:1px solid var(--border); border-radius:var(--r-md); padding:14px;">
+                        <div class="form-group">
+                            <label>عنوان حاوية الترحيب</label>
+                            <input type="text" id="ticket_container_title" class="glass-input" value="<%= pData.ticket_message_style?.container?.title || '' %>" placeholder="مثال: معلومات التذكرة">
+                        </div>
+                        <div class="form-group">
+                            <label>وصف الحاوية</label>
+                            <textarea id="ticket_container_description" class="glass-input" rows="3" placeholder="محتوى الترحيب..."><%= pData.ticket_message_style?.container?.description || '' %></textarea>
+                        </div>
+                        <div class="form-group" style="margin:0;">
+                            <label>لون الحاشية/الحافة (Accent Color)</label>
+                            <select id="ticket_container_accent" class="glass-input">
+                                <option value="Blue" <%= pData.ticket_message_style?.container?.accent === 'Blue' ? 'selected' : '' %>>الأزرق</option>
+                                <option value="Green" <%= pData.ticket_message_style?.container?.accent === 'Green' ? 'selected' : '' %>>الأخضر</option>
+                                <option value="Red" <%= pData.ticket_message_style?.container?.accent === 'Red' ? 'selected' : '' %>>الأحمر</option>
+                                <option value="Yellow" <%= pData.ticket_message_style?.container?.accent === 'Yellow' ? 'selected' : '' %>>الأصفر</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Submit / Send Toggle -->
+                <div class="glass-panel mt-3">
+                    <div class="form-group d-flex align-items-center gap-2 mb-3">
+                        <input type="checkbox" id="send_panel" name="send_panel" value="yes" style="width: 20px; height: 20px; accent-color: #fff; cursor: pointer;">
+                        <label for="send_panel" style="margin:0;" class="fw-bold text-success cursor-pointer">إرسال / تحديث لوحة التذاكر في القناة الآن</label>
+                        <input type="hidden" id="panel_data_json" name="panel_data_json">
+                    </div>
+
+                    <button type="submit" class="btn btn-primary btn-large btn-block"><i class="fa-solid fa-floppy-disk"></i> حفظ ونشر لوحة التذاكر</button>
+                </div>
+
+            </form>
+        </div>
+
+        <!-- Preview Section (Left Column with sticky behavior) -->
+        <div class="sticky-preview">
+            
+            <div class="glass-panel">
+                <div class="section-title"><i class="fa-solid fa-eye"></i> معاينة لوحة فتح التذاكر</div>
+                
+                <div class="discord-preview-container" style="background:#0c0c0c; border:1px solid var(--border); border-radius:var(--r-md); padding:16px;">
+                    <div class="discord-embed" id="preview_embed" style="background-color:#141414; max-width:100%; border-radius:var(--r-sm); border:1px solid var(--border); border-right:4px solid #5865F2; border-left:none; padding:16px;">
+                        <div class="embed-content-wrapper" style="display:flex; justify-content:space-between; gap:16px;">
+                            <div class="flex-grow-1" style="min-width:0;">
+                                <div class="embed-title" id="preview_title" style="font-weight:700; font-size:0.95rem; color:#fff; margin-bottom:6px;"></div>
+                                <div class="embed-description" id="preview_description" style="font-size:0.85rem; color:var(--text-2); line-height:1.5; white-space:pre-wrap;"></div>
+                            </div>
+                            <img class="embed-thumbnail" id="preview_thumbnail" src="" alt="" style="width:60px; height:60px; border-radius:4px; object-fit:contain; display:none; flex-shrink:0;">
+                        </div>
+                        <img class="embed-image" id="preview_image" src="" alt="" style="max-width:100%; max-height:200px; border-radius:4px; margin-top:10px; object-fit:cover; display:none;">
+                    </div>
+
+                    <div class="mt-2">
+                        <div id="preview_button" class="discord-button" style="border-radius:var(--r-sm); font-size:0.8rem; padding: 6px 12px; cursor:default; display:none; background:#5865F2; color:#fff;">
+                            <span id="preview_btn_emoji" style="margin-left:4px;"></span>
+                            <span id="preview_btn_label"></span>
+                        </div>
+
+                        <div id="preview_select" class="discord-select" style="display:none; background:#2b2d31; border:1px solid #3e4047; padding:8px 12px; border-radius:var(--r-sm); font-size:0.8rem; color:#dbdee1;">
+                            <div class="d-flex gap-sm">
+                                <span id="preview_sel_emoji" style="margin-left:4px;"></span>
+                                <span id="preview_sel_label"></span>
+                            </div>
+                            <i class="fa-solid fa-chevron-down" style="font-size:10px; color:#b5bac1;"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="glass-panel mt-3">
+                <div class="section-title"><i class="fa-solid fa-ticket"></i> معاينة الترحيب داخل التذكرة</div>
+                
+                <div class="discord-preview-container" style="background:#0c0c0c; border:1px solid var(--border); border-radius:var(--r-md); padding:16px;">
+                    <div class="discord-embed" style="background-color:#141414; max-width:100%; border-radius:var(--r-sm); border:1px solid var(--border); border-right:4px solid #5865F2; border-left:none; padding:16px;">
+                        <div class="embed-description" style="display:block; font-size:0.85rem; color:#dbdee1; line-height:1.5;">
+                            <span id="ticket_preview_text">مرحباً بك في تذكرتك</span>
+                        </div>
+                    </div>
+
+                    <div class="d-flex flex-wrap gap-sm mt-2" style="gap:6px;">
+                        <div class="discord-button" style="background:#da373c; border-radius:4px; font-size:0.75rem; padding:5px 10px; cursor:default;">🔒 إغلاق التذكرة</div>
+                        <div id="preset_actions_preview" class="d-flex flex-wrap gap-sm" style="gap:6px;"></div>
+                        <div id="custom_btns_preview" class="d-flex flex-wrap gap-sm" style="gap:6px;"></div>
+                        <div id="custom_menus_preview" class="w-100" style="margin-top:6px;"></div>
+                        <div id="control_menu_preview" class="w-100" style="margin-top:6px;"></div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+    </div>
+
+</main>
+
+<script>
+    // Live update preview
+    function updatePreview() {
+        const color = document.getElementById('color').value;
+        const title = document.getElementById('title').value.trim();
+        const description = document.getElementById('description').value.trim();
+        const thumbnail = document.getElementById('thumbnail').value.trim();
+        const image = document.getElementById('image').value.trim();
+        const compType = document.getElementById('comp_type').value;
+        const compLabel = document.getElementById('comp_label').value.trim();
+        const compEmoji = document.getElementById('comp_emoji').value.trim();
+
+        document.getElementById('preview_embed').style.borderRightColor = color;
+
+        const titleEl = document.getElementById('preview_title');
+        titleEl.textContent = title;
+        titleEl.style.display = title ? 'block' : 'none';
+
+        const descEl = document.getElementById('preview_description');
+        descEl.textContent = description;
+        descEl.style.display = description ? 'block' : 'none';
+
+        const thumbEl = document.getElementById('preview_thumbnail');
+        thumbEl.src = thumbnail;
+        thumbEl.style.display = thumbnail ? 'block' : 'none';
+
+        const imgEl = document.getElementById('preview_image');
+        imgEl.src = image;
+        imgEl.style.display = image ? 'block' : 'none';
+
+        const btnDiv = document.getElementById('preview_button');
+        const selDiv = document.getElementById('preview_select');
+
+        if (compType === 'button') {
+            btnDiv.style.display = 'inline-flex';
+            selDiv.style.display = 'none';
+            document.getElementById('preview_btn_label').textContent = compLabel || 'افتح تذكرة';
+            document.getElementById('preview_btn_emoji').textContent = compEmoji;
+        } else {
+            btnDiv.style.display = 'none';
+            selDiv.style.display = 'flex';
+            document.getElementById('preview_sel_label').textContent = compLabel || 'افتح تذكرة';
+            document.getElementById('preview_sel_emoji').textContent = compEmoji;
+        }
+    }
+
+    const inputs = ['color', 'title', 'description', 'thumbnail', 'image', 'comp_type', 'comp_label', 'comp_emoji', 'ticket_message'];
+    inputs.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('input', updatePreview);
+    });
+
+    const ticketMsgEl = document.querySelector('[name="ticket_message"]');
+    if (ticketMsgEl) {
+        document.getElementById('ticket_preview_text').textContent = ticketMsgEl.value || 'مرحباً بك في تذكرتك';
+    }
+
+    updatePreview();
+
+    // Serialize arrays on submit
+    document.querySelector("form.settings-form").addEventListener("submit", (e) => {
+        const customButtons = [];
+        document.querySelectorAll("#custom_buttons_container .custom-btn-row").forEach(card => {
+            const label = card.querySelector('[name="custom_btn_label[]"]')?.value || '';
+            const emoji = card.querySelector('[name="custom_btn_emoji[]"]')?.value || '';
+            const style = card.querySelector('[name="custom_btn_style[]"]')?.value || 'Primary';
+            const reply = card.querySelector('[name="custom_btn_reply[]"]')?.value || '';
+            customButtons.push({ label, emoji, style, reply });
+        });
+
+        const customMenus = [];
+        document.querySelectorAll("#custom_menus_container .custom-menu-row").forEach(menu => {
+            const placeholder = menu.querySelector(".menu-placeholder")?.value || '';
+            const options = [];
+            menu.querySelectorAll(".menu-option").forEach(opt => {
+                const label = opt.querySelector(".option-label")?.value || '';
+                const emoji = opt.querySelector(".option-emoji")?.value || '';
+                const reply = opt.querySelector(".option-reply")?.value || '';
+                options.push({ label, emoji, reply });
+            });
+            customMenus.push({ placeholder, options });
+        });
+
+        const panelData = {
+            comp_type: document.getElementById("comp_type").value,
+            label: document.getElementById("comp_label").value,
+            emoji: document.getElementById("comp_emoji").value,
+            title: document.getElementById("title").value,
+            description: document.getElementById("description").value,
+            color: document.getElementById("color").value,
+            thumbnail: document.getElementById("thumbnail").value,
+            image: document.getElementById("image").value,
+            panel_mode: document.getElementById("panel_mode")?.value || "simple",
+            custom_buttons: customButtons,
+            custom_menus: customMenus,
+            ticket_message_style: {
+                type: document.getElementById("ticket_msg_type").value,
+                embed: {
+                    title: document.getElementById("ticket_embed_title")?.value || "",
+                    description: document.getElementById("ticket_embed_description")?.value || "",
+                    color: document.getElementById("ticket_embed_color")?.value || "#5865F2",
+                    thumbnail: document.getElementById("ticket_embed_thumbnail")?.value || "",
+                    image: document.getElementById("ticket_embed_image")?.value || "",
+                    footer: document.getElementById("ticket_embed_footer")?.value || "",
+                    footer_icon: document.getElementById("ticket_embed_footer_icon")?.value || ""
+                },
+                plain: {
+                    content: document.getElementById("ticket_plain_content")?.value || ""
+                },
+                container: {
+                    title: document.getElementById("ticket_container_title")?.value || "",
+                    description: document.getElementById("ticket_container_description")?.value || "",
+                    accent: document.getElementById("ticket_container_accent")?.value || "Blue"
+                }
+            }
+        };
+
+        document.getElementById("panel_data_json").value = JSON.stringify(panelData);
+    });
+
+    const panelMode = document.getElementById("panel_mode");
+
+    function togglePanelMode(){
+        const simple = document.getElementById("simple_panel_box");
+        const advanced = document.getElementById("advanced_panel_box");
+
+        if (panelMode && panelMode.value === "advanced") {
+            if (simple) simple.style.display = "none";
+            if (advanced) advanced.style.display = "block";
+        } else {
+            if (simple) simple.style.display = "block";
+            if (advanced) advanced.style.display = "none";
+        }
+        updateTicketPreview();
+    }
+    
+    if (panelMode) {
+        panelMode.addEventListener("change", togglePanelMode);
+        togglePanelMode();
+    }
+
+    // Dynamic item builders
+    let customButtonsCount = 0;
+    const initialButtons = <%- JSON.stringify(pData.custom_buttons || []) %>;
+
+    function buildCustomButtonRow(data = {}) {
+        if (customButtonsCount >= 3 && !data.label) return;
+
+        const card = document.createElement("div");
+        card.className = "custom-btn-row role-row";
+        card.innerHTML = `
+            <button type="button" class="btn-remove-row" style="position: absolute; top:12px; left:12px; background:none; border:none; color:var(--danger); cursor:pointer; font-size:1rem;"><i class="fa-solid fa-trash"></i></button>
+            <div class="grid-form-3" style="margin-bottom:8px;">
+                <div class="form-group" style="margin:0;">
+                    <label style="font-size:0.8rem; font-weight:600;">اسم الزر</label>
+                    <input type="text" class="glass-input" name="custom_btn_label[]" placeholder="مثال: تقديم شكوى" value="${data.label || ''}" required>
+                </div>
+                <div class="form-group" style="margin:0;">
+                    <label style="font-size:0.8rem; font-weight:600;">إيموجي</label>
+                    <input type="text" class="glass-input" name="custom_btn_emoji[]" placeholder="🎟️" value="${data.emoji || ''}">
+                </div>
+                <div class="form-group" style="margin:0;">
+                    <label style="font-size:0.8rem; font-weight:600;">شكل الزر</label>
+                    <select class="glass-input" name="custom_btn_style[]">
+                        <option value="Primary" ${data.style === 'Primary' ? 'selected' : ''}>أزرق</option>
+                        <option value="Secondary" ${data.style === 'Secondary' ? 'selected' : ''}>رمادي</option>
+                        <option value="Success" ${data.style === 'Success' ? 'selected' : ''}>أخضر</option>
+                        <option value="Danger" ${data.style === 'Danger' ? 'selected' : ''}>أحمر</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-group" style="margin:0;">
+                <label style="font-size:0.8rem; font-weight:600;">الرد التلقائي المخفي (Ephemeral)</label>
+                <textarea class="glass-input" rows="2" name="custom_btn_reply[]" placeholder="رسالة تظهر فقط للعضو عند ضغط الزر...">${data.reply || ''}</textarea>
+            </div>
+        `;
+        
+        card.querySelector(".btn-remove-row").addEventListener("click", () => {
+            card.remove();
+            customButtonsCount--;
+            updateTicketPreview();
+        });
+
+        document.getElementById("custom_buttons_container").appendChild(card);
+        if (!data.label) customButtonsCount++;
+        updateTicketPreview();
+    }
+
+    initialButtons.forEach(btn => {
+        buildCustomButtonRow(btn);
+        customButtonsCount++;
+    });
+
+    document.getElementById("add_custom_button")?.addEventListener("click", () => buildCustomButtonRow());
+
+    let customMenusCount = 0;
+    const initialMenus = <%- JSON.stringify(pData.custom_menus || []) %>;
+
+    function buildCustomMenuRow(data = {}) {
+        if (customMenusCount >= 3 && !data.placeholder) return;
+
+        const card = document.createElement("div");
+        card.className = "custom-menu-row role-row";
+        card.innerHTML = `
+            <button type="button" class="btn-remove-row" style="position: absolute; top:12px; left:12px; background:none; border:none; color:var(--danger); cursor:pointer; font-size:1rem;"><i class="fa-solid fa-trash"></i></button>
+            <div class="form-group" style="margin-bottom:8px;">
+                <label style="font-size:0.8rem; font-weight:600;">اسم القائمة المنسدلة (Placeholder)</label>
+                <input type="text" class="glass-input menu-placeholder" placeholder="مثال: اختر سبب التذكرة..." value="${data.placeholder || ''}" required>
+            </div>
+            <div class="menu-options-container" style="display:flex; flex-direction:column; gap:8px;"></div>
+            <button type="button" class="btn btn-secondary btn-sm btn-add-opt mt-2"><i class="fa-solid fa-plus"></i> إضافة خيار للقائمة</button>
+        `;
+
+        card.querySelector(".btn-remove-row").addEventListener("click", () => {
+            card.remove();
+            customMenusCount--;
+            updateTicketPreview();
+        });
+
+        const optContainer = card.querySelector(".menu-options-container");
+        
+        function buildOptionRow(optData = {}) {
+            const opt = document.createElement("div");
+            opt.className = "menu-option role-row";
+            opt.style.background = "rgba(255,255,255,0.015)";
+            opt.innerHTML = `
+                <button type="button" class="btn-remove-opt" style="position: absolute; top:8px; left:8px; background:none; border:none; color:var(--danger); cursor:pointer; font-size:0.85rem;"><i class="fa-solid fa-trash"></i></button>
+                <div class="grid-form-2" style="margin-bottom:8px;">
+                    <div class="form-group" style="margin:0;">
+                        <label style="font-size:0.75rem; font-weight:600;">اسم الخيار</label>
+                        <input type="text" class="glass-input option-label" placeholder="مثال: استفسار عام" value="${optData.label || ''}" required>
+                    </div>
+                    <div class="form-group" style="margin:0;">
+                        <label style="font-size:0.75rem; font-weight:600;">إيموجي</label>
+                        <input type="text" class="glass-input option-emoji" placeholder="❓" value="${optData.emoji || ''}">
+                    </div>
+                </div>
+                <div class="form-group" style="margin:0;">
+                    <label style="font-size:0.75rem; font-weight:600;">الرد التلقائي</label>
+                    <textarea class="glass-input option-reply" rows="2" placeholder="الرد الذي يظهر للعضو...">${optData.reply || ''}</textarea>
+                </div>
+            `;
+            opt.querySelector(".btn-remove-opt").addEventListener("click", () => {
+                opt.remove();
+                updateTicketPreview();
+            });
+            optContainer.appendChild(opt);
+        }
+
+        if (data.options) {
+            data.options.forEach(opt => buildOptionRow(opt));
+        } else {
+            buildOptionRow();
+        }
+
+        card.querySelector(".btn-add-opt").addEventListener("click", () => {
+            if (optContainer.children.length >= 10) {
+                alert("الحد الأقصى لخيارات القائمة هو 10");
+                return;
+            }
+            buildOptionRow();
+            updateTicketPreview();
+        });
+
+        document.getElementById("custom_menus_container").appendChild(card);
+        if (!data.placeholder) customMenusCount++;
+        updateTicketPreview();
+    }
+
+    initialMenus.forEach(menu => {
+        buildCustomMenuRow(menu);
+        customMenusCount++;
+    });
+
+    document.getElementById("add_custom_menu")?.addEventListener("click", () => buildCustomMenuRow());
+
+    // Update ticket preview
+    function updateTicketPreview() {
+        const btnsBox = document.getElementById("custom_btns_preview");
+        const menusBox = document.getElementById("custom_menus_preview");
+
+        if (btnsBox) btnsBox.innerHTML = "";
+        if (menusBox) menusBox.innerHTML = "";
+
+        // Custom buttons preview
+        document.querySelectorAll("#custom_buttons_container .custom-btn-row").forEach(card => {
+            const label = card.querySelector('[name="custom_btn_label[]"]')?.value || "زر مخصص";
+            const emoji = card.querySelector('[name="custom_btn_emoji[]"]')?.value || "";
+            const btn = document.createElement("div");
+            btn.className = "discord-button";
+            btn.style.fontSize = "0.75rem";
+            btn.style.padding = "5px 10px";
+            btn.style.borderRadius = "4px";
+            btn.innerHTML = `${emoji} ${label}`;
+            if (btnsBox) btnsBox.appendChild(btn);
+        });
+
+        // Custom menus preview
+        document.querySelectorAll("#custom_menus_container .custom-menu-row").forEach(menu => {
+            const placeholder = menu.querySelector(".menu-placeholder")?.value || "قائمة مخصصة";
+            const select = document.createElement("div");
+            select.className = "discord-select";
+            select.style.fontSize = "0.75rem";
+            select.style.padding = "6px 10px";
+            select.style.borderRadius = "4px";
+            select.style.background = "#2b2d31";
+            select.style.border = "1px solid #3e4047";
+            select.style.marginTop = "6px";
+            select.innerHTML = `<span>${placeholder}</span><i class="fa-solid fa-chevron-down" style="font-size:8px;"></i>`;
+            if (menusBox) menusBox.appendChild(select);
+        });
+
+        // Uptime/welcome preview msg
+        const ticketMsg = document.querySelector('[name="ticket_message"]')?.value;
+        const ticketPreviewText = document.getElementById("ticket_preview_text");
+        if (ticketPreviewText) {
+            ticketPreviewText.textContent = ticketMsg || "مرحباً بك في تذكرتك";
+        }
+
+        const presetBox = document.getElementById("preset_actions_preview");
+        const controlMenu = document.getElementById("control_menu_preview");
+
+        if (presetBox) presetBox.innerHTML = "";
+        if (controlMenu) controlMenu.innerHTML = "";
+
+        const actionsNames = {
+            call_user: "📢 Call User",
+            call_support: "👥 Call Support",
+            call_owners: "👑 Call Owners",
+            warn_user: "⚠️ Warn User",
+            blacklist_user: "⛔ Blacklist User",
+            rename_ticket: "✏️ Rename Ticket",
+            lock_ticket: "🔒 Lock Ticket",
+            unlock_ticket: "🔓 Unlock Ticket"
+        };
+
+        const menuActions = [];
+
+        document.querySelectorAll(".action-display").forEach(select => {
+            const action = select.dataset.action;
+            if (select.value === "button") {
+                const btn = document.createElement("div");
+                btn.className = "discord-button";
+                btn.style.fontSize = "0.75rem";
+                btn.style.padding = "5px 10px";
+                btn.style.borderRadius = "4px";
+                btn.innerHTML = actionsNames[action];
+                if (presetBox) presetBox.appendChild(btn);
+            }
+            if (select.value === "menu") {
+                menuActions.push(actionsNames[action]);
+            }
+        });
+
+        if (menuActions.length && controlMenu) {
+            const menu = document.createElement("div");
+            menu.className = "discord-select";
+            menu.style.fontSize = "0.75rem";
+            menu.style.padding = "6px 10px";
+            menu.style.borderRadius = "4px";
+            menu.style.background = "#2b2d31";
+            menu.style.border = "1px solid #3e4047";
+            menu.innerHTML = `<span>قائمة التحكم (${menuActions.length} خيارات)</span><i class="fa-solid fa-chevron-down" style="font-size:8px;"></i>`;
+            controlMenu.appendChild(menu);
+        }
+    }
+
+    document.addEventListener("input", updateTicketPreview);
+    document.addEventListener("change", updateTicketPreview);
+    updateTicketPreview();
+
+    // Toggle welcome message type settings
+    const ticketMsgType = document.getElementById("ticket_msg_type");
+
+    function updateTicketMessageMode() {
+        document.getElementById("ticket_embed_settings").style.display = "none";
+        document.getElementById("ticket_plain_settings").style.display = "none";
+        document.getElementById("ticket_container_settings").style.display = "none";
+
+        if(ticketMsgType.value === "embed") {
+            document.getElementById("ticket_embed_settings").style.display = "block";
+        }
+        if(ticketMsgType.value === "plain") {
+            document.getElementById("ticket_plain_settings").style.display = "block";
+        }
+        if(ticketMsgType.value === "container") {
+            document.getElementById("ticket_container_settings").style.display = "block";
+        }
+    }
+
+    ticketMsgType.addEventListener("change", updateTicketMessageMode);
+    updateTicketMessageMode();
+</script>
+
+<%- include('partials/footer') %>
