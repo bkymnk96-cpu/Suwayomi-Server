@@ -14,7 +14,7 @@ const {
 const keyValueService = require("../../services/keyValueService");
 
 const embedColors = [
-  { name: "زيوس", value: "#FF0000" },
+  { name: "أحمر", value: "#FF0000" },
   { name: "أخضر", value: "#00FF00" },
   { name: "أزرق", value: "#0000FF" },
   { name: "أصفر", value: "#FFFF00" },
@@ -88,27 +88,31 @@ module.exports = {
     };
 
     const mainButtons = () => {
-      const buttons = [];
-      buttons.push(
+      const allButtons = [];
+      allButtons.push(
         new ButtonBuilder()
           .setCustomId("edit_title")
-          .setLabel("زيوس").setEmoji(require('../../utils/emojis').adjustments.toString())
+          .setLabel("العنوان")
+          .setEmoji(require('../../utils/emojis').adjustments.toString())
           .setStyle(ButtonStyle.Primary),
         new ButtonBuilder()
           .setCustomId("edit_description")
-          .setLabel("النص").setEmoji(require('../../utils/emojis').message.toString())
+          .setLabel("النص")
+          .setEmoji(require('../../utils/emojis').message.toString())
           .setStyle(ButtonStyle.Primary),
         new ButtonBuilder()
           .setCustomId("edit_image")
-          .setLabel("️ صورة").setEmoji(require('../../utils/emojis').photo.toString())
+          .setLabel("️ صورة")
+          .setEmoji(require('../../utils/emojis').photo.toString())
           .setStyle(ButtonStyle.Secondary)
       );
 
       if (welcomeTemplate.messageType === "embed") {
-        buttons.push(
+        allButtons.push(
           new ButtonBuilder()
             .setCustomId("edit_color")
-            .setLabel("اللون").setEmoji(require('../../utils/emojis').photo.toString())
+            .setLabel("اللون")
+            .setEmoji(require('../../utils/emojis').photo.toString())
             .setStyle(ButtonStyle.Secondary),
           new ButtonBuilder()
             .setCustomId("toggle_thumbnail")
@@ -119,7 +123,7 @@ module.exports = {
         );
       }
 
-      buttons.push(
+      allButtons.push(
         new ButtonBuilder()
           .setCustomId("toggle_message_type")
           .setLabel(
@@ -130,18 +134,25 @@ module.exports = {
           .setStyle(ButtonStyle.Secondary)
       );
 
-      return new ActionRowBuilder().addComponents(buttons);
+      // تقسيم الأزرار إلى صفوف، كل صف بحد أقصى 5 أزرار
+      const rows = [];
+      for (let i = 0; i < allButtons.length; i += 5) {
+        rows.push(new ActionRowBuilder().addComponents(allButtons.slice(i, i + 5)));
+      }
+      return rows;
     };
 
     const actionRow = () =>
       new ActionRowBuilder().addComponents(
         new ButtonBuilder()
           .setCustomId("save_template")
-          .setLabel("حفظ القالب").setEmoji(require('../../utils/emojis').folderopen.toString())
+          .setLabel("حفظ القالب")
+          .setEmoji(require('../../utils/emojis').folderopen.toString())
           .setStyle(ButtonStyle.Success),
         new ButtonBuilder()
           .setCustomId("cancel")
-          .setLabel("إلغاء").setEmoji(require('../../utils/emojis').circlex.toString())
+          .setLabel("إلغاء")
+          .setEmoji(require('../../utils/emojis').circlex.toString())
           .setStyle(ButtonStyle.Danger)
       );
 
@@ -160,7 +171,8 @@ module.exports = {
             .setStyle(ButtonStyle.Secondary),
           new ButtonBuilder()
             .setCustomId("cancel")
-            .setLabel("إلغاء").setEmoji(require('../../utils/emojis').circlex.toString())
+            .setLabel("إلغاء")
+            .setEmoji(require('../../utils/emojis').circlex.toString())
             .setStyle(ButtonStyle.Danger)
         ),
       ],
@@ -176,7 +188,7 @@ module.exports = {
       });
 
       if (typeChoice.customId === "cancel") {
-        await typeChoice.deferUpdate();
+        await typeChoice.deferUpdate().catch(() => {});
         return interaction.editReply({
           content: null,
           components: [],
@@ -185,7 +197,7 @@ module.exports = {
               .setColor("#FF0000")
               .setDescription("{emoji:circlex} تم إلغاء تصميم القالب."),
           ],
-        });
+        }).catch(() => {});
       }
 
       if (typeChoice.customId === "type_embed") {
@@ -197,8 +209,8 @@ module.exports = {
       await typeChoice.deferUpdate();
       await interaction.editReply({
         ...buildMessagePayload(),
-        components: [mainButtons(), actionRow()],
-      });
+        components: [...mainButtons(), actionRow()],
+      }).catch(() => {});
 
       // بدء حلقة التعديلات
       while (true) {
@@ -208,7 +220,7 @@ module.exports = {
         });
 
         if (i.customId === "cancel") {
-          await i.deferUpdate();
+          await i.deferUpdate().catch(() => {});
           return interaction.editReply({
             components: [],
             embeds: [
@@ -216,7 +228,7 @@ module.exports = {
                 .setColor("#FF0000")
                 .setDescription("{emoji:circlex} تم إلغاء تصميم القالب."),
             ],
-          });
+          }).catch(() => {});
         }
 
         if (i.customId === "save_template") {
@@ -252,7 +264,7 @@ module.exports = {
                 .setColor("#00FF00")
                 .setDescription("{emoji:circlecheck} تم حفظ القالب بنجاح."),
             ],
-          });
+          }).catch(() => {});
           return;
         }
 
@@ -272,11 +284,11 @@ module.exports = {
 
           const m = await i.awaitModalSubmit({ time: 120_000 });
           welcomeTemplate.title = m.fields.getTextInputValue("input");
-          await m.deferUpdate();
+          await m.deferUpdate().catch(() => {});
           await m.editReply({
             ...buildMessagePayload(),
-            components: [mainButtons(), actionRow()],
-          });
+            components: [...mainButtons(), actionRow()],
+          }).catch(() => {});
           continue;
         }
 
@@ -296,11 +308,11 @@ module.exports = {
 
           const m = await i.awaitModalSubmit({ time: 120_000 });
           welcomeTemplate.description = m.fields.getTextInputValue("input");
-          await m.deferUpdate();
+          await m.deferUpdate().catch(() => {});
           await m.editReply({
             ...buildMessagePayload(),
-            components: [mainButtons(), actionRow()],
-          });
+            components: [...mainButtons(), actionRow()],
+          }).catch(() => {});
           continue;
         }
 
@@ -320,18 +332,18 @@ module.exports = {
 
           const m = await i.awaitModalSubmit({ time: 120_000 });
           welcomeTemplate.image = m.fields.getTextInputValue("input");
-          await m.deferUpdate();
+          await m.deferUpdate().catch(() => {});
           await m.editReply({
             ...buildMessagePayload(),
-            components: [mainButtons(), actionRow()],
-          });
+            components: [...mainButtons(), actionRow()],
+          }).catch(() => {});
           continue;
         }
 
         // --- تغيير اللون (للإيمبد فقط) ---
         if (i.customId === "edit_color") {
           if (welcomeTemplate.messageType !== "embed") {
-            await i.deferUpdate();
+            await i.deferUpdate().catch(() => {});
             continue;
           }
           const row = new ActionRowBuilder().addComponents(
@@ -342,8 +354,8 @@ module.exports = {
                 embedColors.map((c) => ({ label: c.name, value: c.value }))
               )
           );
-          await i.deferUpdate();
-          await i.editReply({ components: [row, actionRow()] });
+          await i.deferUpdate().catch(() => {});
+          await i.editReply({ components: [row, actionRow()] }).catch(() => {});
 
           const colorI = await interaction.channel.awaitMessageComponent({
             filter,
@@ -351,11 +363,11 @@ module.exports = {
           });
           if (colorI.customId === "select_color") {
             welcomeTemplate.color = colorI.values[0];
-            await colorI.deferUpdate();
+            await colorI.deferUpdate().catch(() => {});
             await colorI.editReply({
               ...buildMessagePayload(),
-              components: [mainButtons(), actionRow()],
-            });
+              components: [...mainButtons(), actionRow()],
+            }).catch(() => {});
           }
           continue;
         }
@@ -363,15 +375,15 @@ module.exports = {
         // --- تفعيل/تعطيل أيقونة السيرفر (للإيمبد فقط) ---
         if (i.customId === "toggle_thumbnail") {
           if (welcomeTemplate.messageType !== "embed") {
-            await i.deferUpdate();
+            await i.deferUpdate().catch(() => {});
             continue;
           }
           welcomeTemplate.thumbnail = !welcomeTemplate.thumbnail;
-          await i.deferUpdate();
+          await i.deferUpdate().catch(() => {});
           await i.editReply({
             ...buildMessagePayload(),
-            components: [mainButtons(), actionRow()],
-          });
+            components: [...mainButtons(), actionRow()],
+          }).catch(() => {});
           continue;
         }
 
@@ -379,11 +391,11 @@ module.exports = {
         if (i.customId === "toggle_message_type") {
           welcomeTemplate.messageType =
             welcomeTemplate.messageType === "embed" ? "message" : "embed";
-          await i.deferUpdate();
+          await i.deferUpdate().catch(() => {});
           await i.editReply({
             ...buildMessagePayload(),
-            components: [mainButtons(), actionRow()],
-          });
+            components: [...mainButtons(), actionRow()],
+          }).catch(() => {});
           continue;
         }
       }
@@ -396,7 +408,7 @@ module.exports = {
             .setColor("#FF0000")
             .setDescription("{emoji:clock} انتهت مهلة التصميم أو حدث خطأ."),
         ],
-      });
+      }).catch(() => {});
     }
   },
 };
