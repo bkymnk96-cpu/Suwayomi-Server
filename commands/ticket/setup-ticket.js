@@ -188,11 +188,11 @@ module.exports = {
                   .setCustomId("basic_select")
                   .setPlaceholder("اختر العنصر لتعديله")
                   .addOptions([
-                    { label: "اسم الزر", value: "buttonName", emoji: "{emoji:adjustments}" },
-                    { label: "لون الزر", value: "buttonStyle", emoji: "{emoji:photo}" },
-                    { label: "إيموجي الزر", value: "buttonEmoji", emoji: "{emoji:moodsmile}" },
-                    { label: "رتبة الدعم", value: "supportRole", emoji: "{emoji:user}" },
-                    { label: "فئة القنوات", value: "category", emoji: "{emoji:folderopen}" },
+                    { label: "اسم الزر", value: "buttonName", emoji: "⚙️" },
+                    { label: "لون الزر", value: "buttonStyle", emoji: "🖼️" },
+                    { label: "إيموجي الزر", value: "buttonEmoji", emoji: "😊" },
+                    { label: "رتبة الدعم", value: "supportRole", emoji: "👤" },
+                    { label: "فئة القنوات", value: "category", emoji: "📂" },
                   ])
               );
               await componentInteraction.editReply({ components: [row, mainButtons()] });
@@ -202,26 +202,26 @@ module.exports = {
             case "edit_advanced": {
               await componentInteraction.deferUpdate();
               const advOptions = [
-                { label: "عنوان البانر", value: "title", emoji: "{emoji:bookmark}️" },
-                { label: "وصف البانر", value: "description", emoji: "{emoji:message}" },
-                { label: "لون التضمين", value: "color", emoji: "{emoji:photo}" },
-                { label: "صورة البانر", value: "embedImage", emoji: "{emoji:photo}️" },
+                { label: "عنوان البانر", value: "title", emoji: "🔖" },
+                { label: "وصف البانر", value: "description", emoji: "💬" },
+                { label: "لون التضمين", value: "color", emoji: "🖼️" },
+                { label: "صورة البانر", value: "embedImage", emoji: "🖼️" },
                 {
                   label: `أيقونة السيرفر ${settings.thumbnail ? "{emoji:circlecheck}" : "{emoji:circlex}"}`,
                   value: "thumbnail",
-                  emoji: "{emoji:photo}️",
+                  emoji: "🖼️",
                 },
                 {
                   label: `نوع رسالة الترحيب (${settings.welcomeType === "embed" ? "تضمين" : "نصية"})`,
                   value: "welcomeType",
-                  emoji: "{emoji:message}",
+                  emoji: "💬",
                 },
                 {
                   label: `سؤال السبب ${settings.askReason ? "{emoji:circlecheck}" : "{emoji:circlex}"}`,
                   value: "askReason",
-                  emoji: "{emoji:infocircle}",
+                  emoji: "ℹ️",
                 },
-                { label: "رسالة الترحيب", value: "welcomeMessage", emoji: "{emoji:mail}" },
+                { label: "رسالة الترحيب", value: "welcomeMessage", emoji: "📧" },
               ];
 
               const row = new ActionRowBuilder().addComponents(
@@ -423,14 +423,14 @@ module.exports = {
                 options.push({
                   label: name,
                   value: name,
-                  emoji: "{emoji:folder}",
+                  emoji: "📁",
                 });
               });
             }
             options.push({
               label: "{emoji:adjustments}️ تخصيص يدوي (كتابة نص)",
               value: "__custom__",
-              emoji: "{emoji:adjustments}",
+              emoji: "⚙️",
             });
 
             const welcomeRow = new ActionRowBuilder().addComponents(
