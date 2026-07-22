@@ -1,12 +1,65 @@
-const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, RoleSelectMenuBuilder, ChannelSelectMenuBuilder, UserSelectMenuBuilder, ChannelType, ModalBuilder, TextInputBuilder, TextInputStyle } = require('discord.js');
-const points = require('../../utils/adminPoints');
-function panelEmbed(guild,cfg){const ranks=(cfg.ranks||[]).sort((a,b)=>a.points-b.points).map(r=>`<@&${r.roleId}> عند **${r.points}** نقطة`).join('\n')||'لا توجد خطة ترقيات.'; return new EmbedBuilder().setColor(cfg.enabled?0x22C55E:0xED4245).setTitle('{emoji:crown} نظام الإدارة').setDescription('لوحة موحدة لتفعيل النظام، إدارة النقاط، الترقيات، مديري النظام، وسجل الإدارة.').addFields({name:'الحالة',value:cfg.enabled?'مفعل':'متوقف',inline:true},{name:'اللوق',value:cfg.logChannelId?`<#${cfg.logChannelId}>`:'غير محدد',inline:true},{name:'مديرو النظام',value:cfg.managers?.length?cfg.managers.map(id=>`<@&${id}>`).join(' '):'الإدمن فقط',inline:false},{name:'خطة الترقيات',value:ranks.slice(0,1024),inline:false}).setFooter({text:guild.name,iconURL:guild.iconURL()}).setTimestamp();}
-const rows=cfg=>[new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('ap_toggle').setLabel(cfg.enabled?'إيقاف النظام':'تفعيل النظام').setStyle(cfg.enabled?ButtonStyle.Danger:ButtonStyle.Success),new ButtonBuilder().setCustomId('ap_log').setLabel('قناة اللوق').setStyle(ButtonStyle.Secondary),new ButtonBuilder().setCustomId('ap_manager').setLabel('مديرو النظام').setStyle(ButtonStyle.Primary),new ButtonBuilder().setCustomId('ap_rank').setLabel('إضافة ترقية').setStyle(ButtonStyle.Primary)),new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('ap_add').setLabel('إضافة نقاط').setStyle(ButtonStyle.Success),new ButtonBuilder().setCustomId('ap_remove').setLabel('خصم نقاط').setStyle(ButtonStyle.Danger),new ButtonBuilder().setCustomId('ap_profile').setLabel('ملف إداري').setStyle(ButtonStyle.Primary),new ButtonBuilder().setCustomId('ap_top').setLabel('التوب').setStyle(ButtonStyle.Secondary),new ButtonBuilder().setCustomId('ap_close').setLabel('إغلاق').setStyle(ButtonStyle.Danger))];
-module.exports={data:new SlashCommandBuilder().setName('admin-points').setDescription('لوحة موحدة لإدارة نظام الإدارة ونقاط الإداريين').setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),async execute(interaction){let cfg=points.getConfig(interaction.guildId); if(!points.hasManager(interaction.member,cfg)) return interaction.reply({content:'{emoji:circlex} لا تمتلك صلاحية إدارة نظام الإدارة.',flags:['Ephemeral']}); await interaction.reply({embeds:[panelEmbed(interaction.guild,cfg)],components:rows(cfg),fetchReply:true}); const filter=i=>i.user.id===interaction.user.id; const pickUser=async(i)=>{const row=new ActionRowBuilder().addComponents(new UserSelectMenuBuilder().setCustomId('ap_user').setPlaceholder('اختر الإداري')); await i.reply({content:'اختر الإداري:',components:[row],flags:['Ephemeral']}); const x=await i.channel.awaitMessageComponent({filter,time:120000}); await x.update({content:'تم الاختيار.',components:[]}); return x.values[0];}; const ask=async(i,title)=>{const modal=new ModalBuilder().setCustomId('ap_amount').setTitle(title); modal.addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('amount').setLabel('عدد النقاط').setStyle(TextInputStyle.Short).setRequired(true)),new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('reason').setLabel('السبب').setStyle(TextInputStyle.Paragraph).setRequired(false))); await i.showModal(modal); const m=await i.awaitModalSubmit({filter,time:180000}); const amount=Number(m.fields.getTextInputValue('amount')); const reason=m.fields.getTextInputValue('reason')||'بدون سبب'; await m.deferUpdate(); return {amount:Number.isFinite(amount)?Math.abs(amount):0,reason};}; while(true){try{const i=await interaction.channel.awaitMessageComponent({filter,time:600000}); if(i.customId==='ap_close'){await i.deferUpdate(); return interaction.editReply({components:[],embeds:[panelEmbed(interaction.guild,cfg).setDescription('{emoji:circlecheck} تم إغلاق لوحة نظام الإدارة.')]});} if(i.customId==='ap_toggle'){cfg=points.saveConfig(interaction.guildId,{enabled:!cfg.enabled}); await i.deferUpdate();}
-else if(i.customId==='ap_log'){const row=new ActionRowBuilder().addComponents(new ChannelSelectMenuBuilder().setCustomId('ap_log_pick').setPlaceholder('اختر روم اللوق').setChannelTypes(ChannelType.GuildText,ChannelType.GuildAnnouncement)); await i.reply({content:'اختر قناة اللوق:',components:[row],flags:['Ephemeral']}); const x=await i.channel.awaitMessageComponent({filter,time:120000}); cfg=points.saveConfig(interaction.guildId,{logChannelId:x.values[0],enabled:true}); await x.update({content:'تم حفظ قناة اللوق.',components:[]});}
-else if(i.customId==='ap_manager'){const row=new ActionRowBuilder().addComponents(new RoleSelectMenuBuilder().setCustomId('ap_manager_pick').setPlaceholder('اختر رتبة مدير نظام الإدارة').setMaxValues(5)); await i.reply({content:'اختر رتب مديري النظام:',components:[row],flags:['Ephemeral']}); const x=await i.channel.awaitMessageComponent({filter,time:120000}); cfg=points.saveConfig(interaction.guildId,{managers:x.values}); await x.update({content:'تم حفظ مديري النظام.',components:[]});}
-else if(i.customId==='ap_rank'){const row=new ActionRowBuilder().addComponents(new RoleSelectMenuBuilder().setCustomId('ap_rank_pick').setPlaceholder('اختر رتبة الترقية')); await i.reply({content:'اختر رتبة الترقية:',components:[row],flags:['Ephemeral']}); const x=await i.channel.awaitMessageComponent({filter,time:120000}); await x.update({content:'اضغط لإدخال نقاط الترقية.',components:[new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('ap_rank_amount').setLabel('إدخال النقاط').setStyle(ButtonStyle.Primary))]}); const open=await i.channel.awaitMessageComponent({filter,time:120000}); const {amount}=await ask(open,'نقاط الترقية'); if(amount){const ranks=(cfg.ranks||[]).filter(r=>r.roleId!==x.values[0]); ranks.push({roleId:x.values[0],points:amount}); cfg=points.saveConfig(interaction.guildId,{ranks});}}
-else if(i.customId==='ap_add'||i.customId==='ap_remove'){const userId=await pickUser(i); await i.followUp({content:'اضغط لإدخال النقاط والسبب.',components:[new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('ap_amount_open').setLabel('إدخال').setStyle(ButtonStyle.Primary))],flags:['Ephemeral']}); const open=await i.channel.awaitMessageComponent({filter,time:120000}); const data=await ask(open,i.customId==='ap_add'?'إضافة نقاط':'خصم نقاط'); const profile=points.add(interaction.guildId,userId,i.customId==='ap_add'?data.amount:-data.amount,data.reason,interaction.user.id,'manual'); const log=cfg.logChannelId&&interaction.guild.channels.cache.get(cfg.logChannelId); if(log) log.send({embeds:[new EmbedBuilder().setColor(0xD4AF37).setTitle('{emoji:crown} تعديل نقاط').setDescription(`${interaction.user} عدّل نقاط <@${userId}>\nالمقدار: **${i.customId==='ap_add'?data.amount:-data.amount}**\nالإجمالي: **${profile.total}**\nالسبب: ${data.reason}`).setTimestamp()]}).catch(()=>null);}
-else if(i.customId==='ap_profile'){const userId=await pickUser(i); const p=points.profile(interaction.guildId,userId); await i.followUp({content:`{emoji:user} ملف <@${userId}>\nالإجمالي: **${p.total||0}**\nاستلام: **${p.ticketsClaimed||0}** | إغلاق: **${p.ticketsClosed||0}**`,flags:['Ephemeral']});}
-else if(i.customId==='ap_top'){await i.reply({content:points.leaderboard(interaction.guildId,10).map((p,n)=>`**${n+1}.** <@${p.userId}> — ${p.total||0}`).join('\n')||'لا توجد نقاط.',flags:['Ephemeral']});}
-cfg=points.getConfig(interaction.guildId); await interaction.editReply({embeds:[panelEmbed(interaction.guild,cfg)],components:rows(cfg)});}catch(e){return interaction.editReply({components:[],embeds:[new EmbedBuilder().setColor(0xED4245).setDescription('انتهى وقت لوحة نظام الإدارة.')] }).catch(()=>null)}}}};
+const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder } = require('discord.js');
+const db = require('../../database/db');
+const emojis = require('../../utils/emojis');
+const { success, error } = require('../../utils/embeds');
+
+function pointsEmbed(interaction, member, profile, logs) {
+  const history = logs.slice(0, 5).map(l => `${l.amount >= 0 ? emojis.circlecheck : emojis.circlex} **${l.amount >= 0 ? '+' : ''}${l.amount}** • <@${l.moderatorId}> • ${l.reason}`).join('\n') || `${emojis.infocircle} لا يوجد سجل حتى الآن`;
+  return new EmbedBuilder()
+    .setColor(0xD4AF37)
+    .setTitle(`${emojis.crown} ملف الإداري: ${member.user.tag}`)
+    .setThumbnail(member.user.displayAvatarURL({ dynamic: true }))
+    .addFields(
+      { name: `${emojis.star} النقاط الحالية`, value: `**${profile.points || 0}** نقطة`, inline: true },
+      { name: `${emojis.thumbup} إجمالي المضاف`, value: `${profile.totalAdded || 0}`, inline: true },
+      { name: `${emojis.thumbdown} إجمالي المخصوم`, value: `${profile.totalRemoved || 0}`, inline: true },
+      { name: `${emojis.list} عدد العمليات`, value: `${profile.actions || 0}`, inline: true },
+      { name: `${emojis.clock} آخر تحديث`, value: profile.updatedAt ? `<t:${Math.floor(profile.updatedAt / 1000)}:R>` : 'غير متوفر', inline: true },
+      { name: `${emojis.folderopen} آخر السجل`, value: history }
+    )
+    .setFooter({ text: interaction.guild.name, iconURL: interaction.guild.iconURL() })
+    .setTimestamp();
+}
+
+module.exports = {
+  category: 'admin',
+  data: new SlashCommandBuilder()
+    .setName('admin-points')
+    .setDescription('نظام نقاط الإدارة المتقدم')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+    .addSubcommand(s => s.setName('profile').setDescription('عرض ملف عضو إداري').addUserOption(o => o.setName('member').setDescription('العضو').setRequired(true)))
+    .addSubcommand(s => s.setName('add').setDescription('إضافة نقاط لعضو').addUserOption(o => o.setName('member').setDescription('العضو').setRequired(true)).addIntegerOption(o => o.setName('points').setDescription('عدد النقاط').setRequired(true).setMinValue(1)).addStringOption(o => o.setName('reason').setDescription('السبب')))
+    .addSubcommand(s => s.setName('remove').setDescription('خصم نقاط من عضو').addUserOption(o => o.setName('member').setDescription('العضو').setRequired(true)).addIntegerOption(o => o.setName('points').setDescription('عدد النقاط').setRequired(true).setMinValue(1)).addStringOption(o => o.setName('reason').setDescription('السبب')))
+    .addSubcommand(s => s.setName('reset').setDescription('إعادة تعيين نقاط عضو').addUserOption(o => o.setName('member').setDescription('العضو').setRequired(true)).addStringOption(o => o.setName('reason').setDescription('السبب')))
+    .addSubcommand(s => s.setName('top').setDescription('عرض لوحة صدارة الإدارة'))
+    .addSubcommand(s => s.setName('history').setDescription('عرض سجل نقاط عضو').addUserOption(o => o.setName('member').setDescription('العضو').setRequired(true)))
+    .addSubcommand(s => s.setName('settings').setDescription('ضبط نظام نقاط الإدارة').addBooleanOption(o => o.setName('enabled').setDescription('تفعيل النظام')).addIntegerOption(o => o.setName('max_points').setDescription('الحد الأقصى للنقاط').setMinValue(1)).addBooleanOption(o => o.setName('auto_rewards').setDescription('تفعيل المكافآت التلقائية'))),
+
+  async execute(interaction) {
+    const sub = interaction.options.getSubcommand();
+    const guildId = interaction.guild.id;
+    if (sub === 'settings') {
+      const data = {};
+      for (const key of ['enabled', 'auto_rewards']) { const v = interaction.options.getBoolean(key); if (v !== null) data[key] = v; }
+      const max = interaction.options.getInteger('max_points'); if (max) data.max_points = max;
+      const settings = db.updateAdminSystemSettings(guildId, data);
+      return interaction.reply({ embeds: [success(`${emojis.settings} تم تحديث نظام الإدارة`, `الحالة: **${settings.enabled ? 'مفعل' : 'معطل'}**\nالحد الأقصى: **${settings.max_points}**\nالمكافآت: **${settings.auto_rewards ? 'مفعلة' : 'معطلة'}**`)] });
+    }
+    const settings = db.getAdminSystemSettings(guildId);
+    if (!settings.enabled && sub !== 'settings') return interaction.reply({ embeds: [error(`${emojis.circlex} نظام الإدارة معطل حالياً`)], flags: ['Ephemeral'] });
+    if (sub === 'top') {
+      const rows = db.getAdminPointProfiles(guildId).slice(0, 10);
+      const body = rows.map((p, i) => `**${i + 1}.** <@${p.userId}> — ${emojis.star} **${p.points || 0}**`).join('\n') || 'لا توجد بيانات بعد.';
+      return interaction.reply({ embeds: [success(`${emojis.trophy} صدارة نقاط الإدارة`, body)] });
+    }
+    const member = interaction.options.getMember('member');
+    if (!member) return interaction.reply({ embeds: [error('العضو غير موجود في السيرفر')], flags: ['Ephemeral'] });
+    const reason = interaction.options.getString('reason') || 'بدون سبب';
+    if (sub === 'add') db.changeAdminPoints(guildId, member.id, interaction.options.getInteger('points'), interaction.user.id, reason);
+    if (sub === 'remove') db.changeAdminPoints(guildId, member.id, -interaction.options.getInteger('points'), interaction.user.id, reason);
+    if (sub === 'reset') db.resetAdminPoints(guildId, member.id, interaction.user.id, reason);
+    const profile = db.getAdminPointProfile(guildId, member.id);
+    const logs = db.getAdminPointLogs(guildId, member.id);
+    return interaction.reply({ embeds: [pointsEmbed(interaction, member, profile, logs)] });
+  }
+};
