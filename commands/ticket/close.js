@@ -1,6 +1,46 @@
-const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
-const db = require('../../database/db');
-const emojis = require('../../utils/emojis');
-const { error } = require('../../utils/embeds');
-const { canCloseTicket, sendTicketCloseLog } = require('../../utils/ticketUtils');
-module.exports = { category:'ticket', data:new SlashCommandBuilder().setName('close').setDescription('إغلاق قناة التذكرة الحالية'), async execute(interaction){ const ticket=db.getTicketByChannel(interaction.channel.id); if(!ticket) return interaction.reply({embeds:[error('هذه القناة ليست تذكرة')],flags:['Ephemeral']}); if(!canCloseTicket(interaction.member,interaction.user,ticket,db.getTicketSettings(interaction.guild.id))) return interaction.reply({embeds:[error('لا تمتلك صلاحية إغلاق هذه التذكرة.')],flags:['Ephemeral']}); if(ticket.status==='closed') return interaction.reply({embeds:[error('هذه التذكرة مغلقة بالفعل.')],flags:['Ephemeral']}); const ownerId=ticket.userId||ticket.ownerId; if(ownerId) await interaction.channel.permissionOverwrites.edit(ownerId,{ViewChannel:false,SendMessages:false}).catch(()=>null); const closed=db.updateTicket(interaction.channel.id,{status:'closed',closedAt:new Date().toISOString(),closedBy:interaction.user.id}); const embed2=new EmbedBuilder().setColor(0xD4AF37).setDescription(`${emojis.lock} تم إغلاق التذكرة بواسطة ${interaction.user}`); const panel=new EmbedBuilder().setColor(0x2B2D31).setDescription('```لوحة فريق الدعم.```'); const row=new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('delete').setLabel('حذف').setEmoji(emojis.trash.toString()).setStyle(ButtonStyle.Danger),new ButtonBuilder().setCustomId('Open').setLabel('فتح').setEmoji(emojis.lock.toString()).setStyle(ButtonStyle.Success),new ButtonBuilder().setCustomId('Tran').setLabel('نسخة نصية').setEmoji(emojis.folderopen.toString()).setStyle(ButtonStyle.Secondary)); await interaction.reply({embeds:[embed2,panel],components:[row]}); await sendTicketCloseLog(interaction.guild,closed||ticket,interaction.channel,interaction.user); }};
+const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonStyle, ButtonBuilder } = require("discord.js");
+const keyValueService = require("../../services/keyValueService");
+const { canCloseTicket, getOwnerId, markTicketClosed, sendTicketCloseLog } = require("../../utils/ticketUtils");
+
+module.exports = {
+    adminsOnly: false,
+    data: new SlashCommandBuilder()
+        .setName('close')
+        .setDescription('إغلاق قناة التذكرة الحالية'),
+    
+    /**
+     * @param { import('discord.js').ChatInputCommandInteraction } interaction 
+     */
+    async execute(interaction) {
+        const ticket = await keyValueService.get('ticketDB', `TICKET-PANEL_${interaction.channel.id}`);
+        if (!ticket) {
+            return interaction.reply({ content: `> هذه القناة ليست تذكرة`, ephemeral: true });
+        }
+
+        if (!canCloseTicket(interaction.member, interaction.user, ticket)) {
+            return interaction.reply({ content: `{emoji:circlex} لا تمتلك صلاحية إغلاق هذه التذكرة.`, ephemeral: true });
+        }
+
+        const closedTicket = await markTicketClosed(interaction.channel, interaction.user);
+        const ownerId = getOwnerId(closedTicket);
+        if (ownerId) await interaction.channel.permissionOverwrites.edit(ownerId, { ViewChannel: false }).catch(() => {});
+
+        const embed2 = new EmbedBuilder()
+            .setDescription(`تم إغلاق التذكرة بواسطة ${interaction.user}`)
+            .setColor("Yellow");
+
+        const embed = new EmbedBuilder()
+            .setDescription("```لوحة فريق الدعم.```")
+            .setColor("DarkButNotBlack");
+
+        const row = new ActionRowBuilder()
+            .addComponents(
+                new ButtonBuilder().setCustomId('delete').setLabel('حذف').setStyle(ButtonStyle.Danger),
+                new ButtonBuilder().setCustomId('Open').setLabel('فتح').setStyle(ButtonStyle.Success),
+                new ButtonBuilder().setCustomId('Tran').setLabel('نسخة نصية').setStyle(ButtonStyle.Secondary)
+            );
+
+        await interaction.reply({ embeds: [embed2, embed], components: [row] });
+        await sendTicketCloseLog(interaction.guild, closedTicket, interaction.channel, interaction.user);
+    }
+};

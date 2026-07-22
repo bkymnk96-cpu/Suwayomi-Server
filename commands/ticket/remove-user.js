@@ -1,5 +1,38 @@
-const { SlashCommandBuilder } = require('discord.js');
-const db = require('../../database/db');
-const { success, error } = require('../../utils/embeds');
-const { canManageTicket } = require('../../utils/ticketUtils');
-module.exports = { category: 'ticket', data: new SlashCommandBuilder().setName('remove-user').setDescription('إزالة عضو من قناة التذكرة الحالية').addUserOption(o => o.setName('user').setDescription('اختر العضو لإزالته').setRequired(true)), async execute(interaction) { const ticket = db.getTicketByChannel(interaction.channel.id); if (!ticket) return interaction.reply({ embeds:[error('هذه القناة ليست تذكرة')], flags:['Ephemeral'] }); if (!canManageTicket(interaction.member, ticket, db.getTicketSettings(interaction.guild.id))) return interaction.reply({ embeds:[error('لا تمتلك صلاحية إزالة أعضاء من هذه التذكرة.')], flags:['Ephemeral'] }); const member = interaction.options.getMember('user'); await interaction.channel.permissionOverwrites.edit(member.id,{ViewChannel:false,SendMessages:false}); return interaction.reply({ embeds:[success(`تمت إزالة ${member} من التذكرة ${interaction.channel}.`)] }); } };
+const { SlashCommandBuilder } = require("discord.js");
+const keyValueService = require("../../services/keyValueService");
+const { canManageTicket } = require("../../utils/ticketUtils");
+
+module.exports = {
+    adminsOnly: false,
+    data: new SlashCommandBuilder()
+        .setName('remove-user')
+        .setDescription('إزالة عضو من قناة التذكرة الحالية')
+        .addUserOption(option => 
+            option
+                .setName('user')
+                .setDescription('اختر العضو لإزالته')
+                .setRequired(true)
+        ),
+    
+    /**
+     * @param { import('discord.js').ChatInputCommandInteraction } interaction 
+     */
+    async execute(interaction) {
+        const ticketData = await keyValueService.get('ticketDB', `TICKET-PANEL_${interaction.channel.id}`);
+        if (!ticketData) {
+            return interaction.reply({ content: `> هذه القناة ليست تذكرة`, ephemeral: true });
+        }
+
+        if (!canManageTicket(interaction.member, ticketData)) {
+            return interaction.reply({ content: `{emoji:circlex} لا تمتلك صلاحية إزالة أعضاء من هذه التذكرة.`, ephemeral: true });
+        }
+
+        const member = interaction.options.getMember('user');
+        await interaction.channel.permissionOverwrites.edit(member.user.id, {
+            ViewChannel: false,
+            SendMessages: false
+        });
+
+        return interaction.reply({ content: `{emoji:circlecheck} تمت إزالة ${member} من التذكرة ${interaction.channel}.` });
+    }
+};

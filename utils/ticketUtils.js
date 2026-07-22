@@ -1,47 +1,177 @@
-const { PermissionsBitField, EmbedBuilder } = require('discord.js');
-const db = require('../database/db');
-const emojis = require('./emojis');
+const { PermissionsBitField, EmbedBuilder } = require("discord.js");
+const keyValueService = require('../services/keyValueService');
 
-function zeusOk(text) { return `${emojis.circlecheck} ${text}`; }
-function zeusNo(text) { return `${emojis.circlex} ${text}`; }
-function getSupportRoleId(ticket, settings) { return ticket?.supportRoleId || ticket?.Support || settings?.staff_role || null; }
-function getOwnerId(ticket) { return ticket?.ownerId || ticket?.author || ticket?.userId || null; }
-function canManageTicket(member, ticket, settings = null) {
-  const roleId = getSupportRoleId(ticket, settings);
-  return Boolean(member?.permissions?.has(PermissionsBitField.Flags.Administrator) || (roleId && member?.roles?.cache?.has(roleId)));
+function hasAdministrator(member) {
+  return Boolean(member?.permissions?.has(PermissionsBitField.Flags.Administrator));
 }
-function canCloseTicket(member, user, ticket, settings = null) { return canManageTicket(member, ticket, settings) || getOwnerId(ticket) === user?.id; }
-function getNextTicketId(guildId) {
-  const tickets = db.getTickets?.(guildId) || [];
-  const max = tickets.reduce((n, t) => Math.max(n, Number(t.ticketId || String(t.channelId || '').slice(-4)) || 0), 0);
-  return max + 1;
+
+function getSupportRoleId(ticket) {
+  return ticket?.Support || ticket?.supportRoleId || ticket?.support || null;
 }
-function formatTicketId(id) { return String(id || 1).padStart(3, '0'); }
-function buildTicketChannelName(id) { return `ticket-${formatTicketId(id)}`; }
-function createTicketMetadata({ ticketId, ownerId, supportRoleId, category, channelId, guildId, reason = null }) {
-  return { ticketId, ownerId, author: ownerId, userId: ownerId, supportRoleId, Support: supportRoleId, category, channelId, guildId, reason, status: 'open', createdAt: new Date().toISOString(), claimedBy: null, closedAt: null, closedBy: null };
+
+function getOwnerId(ticket) {
+  return ticket?.ownerId || ticket?.author || ticket?.userId || null;
 }
-function normalizeTicketMetadata(ticket, channel = null) {
-  if (!ticket) return null;
-  return { ...ticket, ownerId: getOwnerId(ticket), userId: getOwnerId(ticket), supportRoleId: getSupportRoleId(ticket), Support: getSupportRoleId(ticket), channelId: ticket.channelId || channel?.id, category: ticket.category || ticket.Category || channel?.parentId };
+
+function isSupportMember(member, ticket) {
+  const supportRoleId = getSupportRoleId(ticket);
+  return Boolean(supportRoleId && member?.roles?.cache?.has(supportRoleId));
 }
-function ticketEmbed(title, description, color = 0xD4AF37) { return new EmbedBuilder().setColor(color).setTitle(title).setDescription(description).setTimestamp(); }
+
+function canManageTicket(member, ticket) {
+  return hasAdministrator(member) || isSupportMember(member, ticket);
+}
+
+function canCloseTicket(member, user, ticket) {
+  const ownerId = getOwnerId(ticket);
+  return canManageTicket(member, ticket) || Boolean(ownerId && user?.id === ownerId);
+}
+
+async function getTicketData(channelId) {
+  return keyValueService.get("ticketDB", `TICKET-PANEL_${channelId}`);
+}
+
+async function updateTicketData(channelId, patch) {
+  const current = (await getTicketData(channelId)) || {};
+  const next = { ...current, ...patch };
+  await keyValueService.set("ticketDB", `TICKET-PANEL_${channelId}`, next);
+  return next;
+}
+
+async function getNextTicketId(guildId) {
+  const current = Number((await keyValueService.get("ticketDB", `TicketCounter_${guildId}`)) || 0);
+  const next = Number.isFinite(current) ? current + 1 : 1;
+  await keyValueService.set("ticketDB", `TicketCounter_${guildId}`, next);
+  return next;
+}
+
+function formatTicketId(ticketId) {
+  const number = Number(ticketId);
+  if (!Number.isFinite(number) || number <= 0) return String(ticketId || "غير معروف");
+  return String(number).padStart(3, "0");
+}
+
+function buildTicketChannelName(ticketId) {
+  return `ticket-${formatTicketId(ticketId)}`;
+}
+
+function parseTicketIdFromName(name) {
+  const match = String(name || "").match(/(?:ticket-)?(\d+)/i);
+  return match ? Number(match[1]) : null;
+}
+
+function createTicketMetadata({ ticketId, ownerId, supportRoleId, category, channelId, guildId }) {
+  return {
+    ticketId,
+    ownerId,
+    author: ownerId,
+    claimedBy: null,
+    createdAt: new Date().toISOString(),
+    closedAt: null,
+    closedBy: null,
+    category,
+    channelId,
+    guildId,
+    Support: supportRoleId,
+    supportRoleId,
+  };
+}
+
+function normalizeTicketMetadata(ticket, channel) {
+  const createdAt = ticket?.createdAt
+    || (channel?.createdAt ? channel.createdAt.toISOString() : null)
+    || (channel?.createdTimestamp ? new Date(channel.createdTimestamp).toISOString() : null)
+    || new Date().toISOString();
+
+  return {
+    ...(ticket || {}),
+    ticketId: ticket?.ticketId || parseTicketIdFromName(channel?.name),
+    ownerId: getOwnerId(ticket),
+    author: getOwnerId(ticket),
+    claimedBy: ticket?.claimedBy || ticket?.claimed || ticket?.claimedById || ticket?.claimed_by || null,
+    createdAt,
+    closedAt: ticket?.closedAt || null,
+    closedBy: ticket?.closedBy || null,
+    category: ticket?.category || ticket?.Category || channel?.parentId || null,
+    channelId: ticket?.channelId || channel?.id || null,
+    Support: getSupportRoleId(ticket),
+    supportRoleId: getSupportRoleId(ticket),
+  };
+}
+
+function formatDurationMs(ms) {
+  const safeMs = Math.max(0, Number(ms) || 0);
+  const totalSeconds = Math.floor(safeMs / 1000);
+  const days = Math.floor(totalSeconds / 86400);
+  const hours = Math.floor((totalSeconds % 86400) / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  const parts = [];
+  if (days) parts.push(`${days} يوم`);
+  if (hours) parts.push(`${hours} ساعة`);
+  if (minutes) parts.push(`${minutes} دقيقة`);
+  if (!parts.length || seconds) parts.push(`${seconds} ثانية`);
+  return parts.join(" و ");
+}
+
+function mentionOrUnknown(id, fallback = "غير معروف") {
+  return id ? `<@${id}>` : fallback;
+}
+
 function buildCloseLogEmbed({ ticket, channel, closedByUser }) {
-  const t = normalizeTicketMetadata(ticket, channel) || {};
-  return new EmbedBuilder().setColor(0xED4245).setTitle(`${emojis.lock} تذكرة مغلقة`).addFields(
-    { name: `${emojis.ticket} التذكرة`, value: channel ? `${channel}` : (t.channelId ? `<#${t.channelId}>` : 'غير معروف'), inline: true },
-    { name: `${emojis.user} صاحب التذكرة`, value: t.ownerId ? `<@${t.ownerId}>` : 'غير معروف', inline: true },
-    { name: `${emojis.shieldcheck} أغلق بواسطة`, value: closedByUser ? `${closedByUser}` : 'غير معروف', inline: true },
-    { name: `${emojis.clock} وقت الإنشاء`, value: t.createdAt ? `<t:${Math.floor(new Date(t.createdAt).getTime() / 1000)}:R>` : 'غير معروف', inline: true },
-    { name: `${emojis.crown} المستلم`, value: t.claimedBy ? `<@${t.claimedBy}>` : 'لم يتم الاستلام', inline: true }
-  ).setFooter({ text: closedByUser?.tag || 'ZEUS Tickets', iconURL: closedByUser?.displayAvatarURL?.() });
+  const normalized = normalizeTicketMetadata(ticket, channel);
+  const closedAt = normalized.closedAt || new Date().toISOString();
+  const duration = formatDurationMs(new Date(closedAt).getTime() - new Date(normalized.createdAt).getTime());
+  const ticketNumber = normalized.ticketId ? formatTicketId(normalized.ticketId) : (channel?.name || "غير معروف");
+
+  return new EmbedBuilder()
+    .setColor("Red")
+    .setTitle("تكت مغلق {emoji:lock}")
+    .addFields(
+      { name: "رقم التكت", value: `\`${ticketNumber}\``, inline: true },
+      { name: "صاحب التكت", value: mentionOrUnknown(normalized.ownerId), inline: true },
+      { name: "أغلق بواسطة", value: mentionOrUnknown(normalized.closedBy || closedByUser?.id), inline: true },
+      { name: "استلمه", value: normalized.claimedBy ? mentionOrUnknown(normalized.claimedBy) : "لم يتم الاستلام", inline: true },
+      { name: "المدة", value: duration, inline: true }
+    )
+    .setFooter({ text: closedByUser?.tag || "نظام التذاكر", iconURL: closedByUser?.displayAvatarURL?.() || undefined })
+    .setTimestamp(new Date(closedAt));
 }
+
+async function markTicketClosed(channel, user) {
+  const existing = await getTicketData(channel.id);
+  const normalized = normalizeTicketMetadata(existing, channel);
+  return updateTicketData(channel.id, {
+    ...normalized,
+    closedAt: new Date().toISOString(),
+    closedBy: user.id,
+  });
+}
+
 async function sendTicketCloseLog(guild, ticket, channel, user) {
-  const settings = db.getTicketSettings(guild.id);
-  const logId = settings.log_channel || settings.LogsRoom;
-  const logChannel = guild.channels.cache.get(logId);
+  const logsRoomId = await keyValueService.get("ticketDB", `LogsRoom_${guild.id}`);
+  const logChannel = guild.channels.cache.get(logsRoomId);
   if (!logChannel) return false;
-  await logChannel.send({ embeds: [buildCloseLogEmbed({ ticket, channel, closedByUser: user })] }).catch(() => null);
+  await logChannel.send({ embeds: [buildCloseLogEmbed({ ticket, channel, closedByUser: user })] });
   return true;
 }
-module.exports = { zeusOk, zeusNo, getSupportRoleId, getOwnerId, canManageTicket, canCloseTicket, getNextTicketId, formatTicketId, buildTicketChannelName, createTicketMetadata, normalizeTicketMetadata, ticketEmbed, buildCloseLogEmbed, sendTicketCloseLog };
+
+module.exports = {
+  hasAdministrator,
+  getSupportRoleId,
+  getOwnerId,
+  isSupportMember,
+  canManageTicket,
+  canCloseTicket,
+  getTicketData,
+  updateTicketData,
+  getNextTicketId,
+  formatTicketId,
+  buildTicketChannelName,
+  createTicketMetadata,
+  normalizeTicketMetadata,
+  formatDurationMs,
+  buildCloseLogEmbed,
+  markTicketClosed,
+  sendTicketCloseLog,
+};
