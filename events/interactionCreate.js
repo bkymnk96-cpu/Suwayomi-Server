@@ -31,6 +31,17 @@ module.exports = {
       const command = client.commands.get(interaction.commandName);
       if (!command) return;
 
+      const commandSettings = db.getCommandSettings(interaction.guildId, interaction.commandName);
+      if (commandSettings && commandSettings.enabled === false && !['help', 'ping'].includes(interaction.commandName)) {
+        return interaction.reply({ embeds: [error('هذا الأمر معطل حالياً من لوحة أوامري.')], flags: ['Ephemeral'] });
+      }
+      const memberRoles = interaction.member?.roles?.cache;
+      if (memberRoles) {
+        const denied = (commandSettings.denyRoles || []).some(roleId => memberRoles.has(roleId));
+        const allowed = !commandSettings.allowRoles?.length || commandSettings.allowRoles.some(roleId => memberRoles.has(roleId));
+        if (denied || !allowed) return interaction.reply({ embeds: [error('لا تملك صلاحية استخدام هذا الأمر حسب إعدادات أوامري.')], flags: ['Ephemeral'] });
+      }
+
       try {
         await command.execute(interaction);
       } catch (e) {
