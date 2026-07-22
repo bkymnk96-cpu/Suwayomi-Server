@@ -11,6 +11,7 @@ const {
   MessageFlags,
   ChannelType,
   PermissionsBitField,
+  AttachmentBuilder,
 } = require("discord.js");
 const keyValueService = require("../../services/keyValueService");
 
@@ -101,10 +102,10 @@ module.exports = {
       panelType: "embed", // "embed" أو "message"
     };
 
-    // إعدادات إضافية للرسالة العادية
+    // إعدادات الرسالة العادية (منفصلة للتحكم الدقيق)
     const messageSettings = {
-      content: settings.description, // النص الظاهر
-      imageUrl: settings.embedImage, // رابط الصورة المرفقة
+      content: settings.description, // يمكن أن يكون فارغًا ""
+      imageUrl: settings.embedImage, // يمكن أن يكون فارغًا ""
     };
 
     // دالة توليد الإيمبد للمعاينة (للنوع embed)
@@ -164,7 +165,7 @@ module.exports = {
       }
     };
 
-    // دالة بناء الرد المناسب حسب النوع
+    // دالة بناء الرد المناسب حسب النوع (للمعاينة أو التحديثات)
     const buildReplyOptions = (extraComponents = []) => {
       const embed = generatePreviewEmbed();
       const comps = extraComponents.length > 0 ? extraComponents : [mainButtons()];
@@ -173,12 +174,18 @@ module.exports = {
         options.embeds = [embed];
         options.content = undefined;
       } else {
-        // رسالة عادية: عرض النص ومعلومة عن الصورة إن وجدت
-        let content = messageSettings.content || "اضغط الزر أدناه لفتح تذكرة";
-        if (messageSettings.imageUrl) {
-          content += `\n🖼️ صورة مرفقة: ${messageSettings.imageUrl}`;
+        // رسالة عادية: عرض النص والصورة إن وجدت
+        const contentParts = [];
+        if (messageSettings.content != null && messageSettings.content !== "") {
+          contentParts.push(messageSettings.content);
+        } else if (!messageSettings.imageUrl) {
+          // لا نص ولا صورة -> إظهار تنبيه بسيط
+          contentParts.push("(لا يوجد نص)");
         }
-        options.content = content;
+        if (messageSettings.imageUrl) {
+          contentParts.push(`🖼️ صورة مرفقة: ${messageSettings.imageUrl}`);
+        }
+        options.content = contentParts.length > 0 ? contentParts.join("\n") : undefined;
         options.embeds = [];
       }
       return options;
@@ -202,7 +209,7 @@ module.exports = {
       });
     } else {
       await interaction.reply({
-        content: messageSettings.content || "اضغط الزر أدناه لفتح تذكرة",
+        content: messageSettings.content || "(لا يوجد نص)",
         components: [mainButtons()],
         fetchReply: true,
       });
@@ -247,13 +254,21 @@ module.exports = {
               const missing = [];
               if (!settings.supportRoleId) missing.push("رتبة الدعم");
               if (!settings.categoryId) missing.push("فئة القنوات");
+              // التحقق من وضع الرسالة العادية: يجب توفر نص أو صورة
+              if (settings.panelType === "message") {
+                const hasContent = messageSettings.content && messageSettings.content.trim() !== "";
+                const hasImage = messageSettings.imageUrl && messageSettings.imageUrl.trim() !== "";
+                if (!hasContent && !hasImage) {
+                  missing.push("نص الرسالة أو رابط الصورة");
+                }
+              }
 
               if (missing.length > 0) {
                 await componentInteraction.deferUpdate();
                 const msg =
-                  missing.length === 2
-                    ? `{emoji:alerttriangle}️ يجب اختيار ${missing.join(" و ")} قبل الإرسال.`
-                    : `{emoji:alerttriangle}️ يجب اختيار ${missing[0]} قبل الإرسال.`;
+                  missing.length === 1
+                    ? `{emoji:alerttriangle}️ يجب اختيار ${missing[0]} قبل الإرسال.`
+                    : `{emoji:alerttriangle}️ يجب اختيار ${missing.join(" و ")} قبل الإرسال.`;
                 await componentInteraction.followUp({
                   content: msg,
                   flags: MessageFlags.Ephemeral,
@@ -378,7 +393,7 @@ module.exports = {
             }
           }
 
-          // خيارات تحتاج Modal (نفس القائمة السابقة مع إضافة content و imageUrl)
+          // خيارات تحتاج Modal
           const needsModal = ["buttonName", "buttonEmoji", "title", "description", "embedImage", "content", "imageUrl"];
           if (needsModal.includes(value)) {
             let modal;
@@ -453,7 +468,7 @@ module.exports = {
                 modal.addComponents(new ActionRowBuilder().addComponents(
                   new TextInputBuilder()
                     .setCustomId("input")
-                    .setLabel("النص الذي سيظهر في الرسالة العادية")
+                    .setLabel("النص (اتركه فارغاً لعدم وجود نص)")
                     .setStyle(TextInputStyle.Paragraph)
                     .setRequired(false)
                     .setValue(currentValue)
@@ -481,8 +496,14 @@ module.exports = {
                 case "modal_title": settings.title = input; break;
                 case "modal_description": settings.description = input; break;
                 case "modal_embedImage": settings.embedImage = input; break;
-                case "modal_content": messageSettings.content = input; settings.description = input; break;
-                case "modal_imageUrl": messageSettings.imageUrl = input; settings.embedImage = input; break;
+                case "modal_content":
+                  messageSettings.content = input;
+                  settings.description = input; // مزامنة الوصف مع النص
+                  break;
+                case "modal_imageUrl":
+                  messageSettings.imageUrl = input;
+                  settings.embedImage = input; // مزامنة الصورة
+                  break;
               }
               await modalSubmit.update(buildReplyOptions());
             } catch (error) {
@@ -722,22 +743,30 @@ module.exports = {
 
     if (settings.panelType === "message") {
       const messagePayload = {
-        content: messageSettings.content || "اضغط الزر أدناه لفتح تذكرة",
         components: [finalRow],
       };
-      if (messageSettings.imageUrl) {
-        // تحميل الصورة من الرابط وإرسالها كمرفق
+
+      // إضافة النص إذا كان غير فارغ
+      if (messageSettings.content && messageSettings.content.trim() !== "") {
+        messagePayload.content = messageSettings.content;
+      }
+
+      // إضافة الصورة كمرفق إذا كان الرابط موجوداً
+      if (messageSettings.imageUrl && messageSettings.imageUrl.trim() !== "") {
         try {
-          const fetch = (await import("node-fetch")).default;
           const response = await fetch(messageSettings.imageUrl);
           if (response.ok) {
             const buffer = Buffer.from(await response.arrayBuffer());
-            messagePayload.files = [{ attachment: buffer, name: "image.png" }];
+            const attachment = new AttachmentBuilder(buffer, { name: "image.png" });
+            messagePayload.files = [attachment];
+          } else {
+            console.warn("تعذر تحميل الصورة المرفقة، استجابة غير ناجحة.");
           }
         } catch (err) {
           console.error("فشل تحميل الصورة المرفقة:", err);
         }
       }
+
       await interaction.channel.send(messagePayload);
     } else {
       await interaction.channel.send({
