@@ -1,4 +1,38 @@
-const { SlashCommandBuilder } = require('discord.js');
-const db = require('../../database/db');
-const { isStaff } = require('../../utils/ticketAdvanced');
-module.exports = { data: new SlashCommandBuilder().setName('rename').setDescription('تغيير اسم قناة التذكرة الحالية').addStringOption(o=>o.setName('name').setDescription('الاسم الجديد').setRequired(true)), async execute(interaction){ const ticket=db.getTicketByChannel(interaction.channelId); const settings=db.getTicketSettings(interaction.guildId); if(!ticket) return interaction.reply({content:'{emoji:circlex} هذه القناة ليست تذكرة.',flags:['Ephemeral']}); if(!isStaff(interaction.member,settings)) return interaction.reply({content:'{emoji:circlex} هذا الأمر لفريق الدعم فقط.',flags:['Ephemeral']}); const name=interaction.options.getString('name').replace(/[^a-zA-Z0-9\u0600-\u06FF-_]/g,'-').slice(0,90); await interaction.channel.setName(name); return interaction.reply({content:`{emoji:edit} تم تغيير اسم التذكرة إلى \`${name}\`.`}); } };
+const { SlashCommandBuilder } = require("discord.js");
+const keyValueService = require("../../services/keyValueService");
+const { canManageTicket } = require("../../utils/ticketUtils");
+
+module.exports = {
+    adminsOnly: false,
+    data: new SlashCommandBuilder()
+        .setName('rename')
+        .setDescription('تغيير اسم قناة التذكرة الحالية')
+        .addStringOption(option => 
+            option
+                .setName('name')
+                .setDescription('اكتب اسم القناة الجديد')
+                .setRequired(true)
+        ),
+    
+    /**
+     * @param { import('discord.js').ChatInputCommandInteraction } interaction 
+     */
+    async execute(interaction) {
+        const ticketData = await keyValueService.get('ticketDB', `TICKET-PANEL_${interaction.channel.id}`);
+        if (!ticketData) {
+            return interaction.reply({ content: `> هذه القناة ليست تذكرة`, ephemeral: true });
+        }
+
+        if (!canManageTicket(interaction.member, ticketData)) {
+            return interaction.reply({ content: `{emoji:circlex} لا تمتلك صلاحية تغيير اسم هذه التذكرة.`, ephemeral: true });
+        }
+
+        const newName = interaction.options.getString('name');
+        if (!newName) {
+            return interaction.reply({ content: `لم يتم إدخال اسم جديد لقناة التذكرة.`, ephemeral: true });
+        }
+
+        await interaction.channel.setName(newName);
+        return interaction.reply({ content: `{emoji:circlecheck} تم تغيير اسم التذكرة إلى \`${newName}\``, ephemeral: true });
+    }
+};
