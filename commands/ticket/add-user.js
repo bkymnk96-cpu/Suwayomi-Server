@@ -1,0 +1,5 @@
+const { SlashCommandBuilder } = require('discord.js');
+const db = require('../../database/db');
+const { success, error } = require('../../utils/embeds');
+const { canManageTicket } = require('../../utils/ticketUtils');
+module.exports = { category: 'ticket', data: new SlashCommandBuilder().setName('add-user').setDescription('إضافة عضو إلى قناة التذكرة الحالية').addUserOption(o => o.setName('user').setDescription('اختر العضو لإضافته').setRequired(true)), async execute(interaction) { const ticket = db.getTicketByChannel(interaction.channel.id); if (!ticket) return interaction.reply({ embeds:[error('هذه القناة ليست تذكرة')], flags:['Ephemeral'] }); if (!canManageTicket(interaction.member, ticket, db.getTicketSettings(interaction.guild.id))) return interaction.reply({ embeds:[error('لا تمتلك صلاحية إضافة أعضاء إلى هذه التذكرة.')], flags:['Ephemeral'] }); const member = interaction.options.getMember('user'); await interaction.channel.permissionOverwrites.edit(member.id,{ViewChannel:true,SendMessages:true,ReadMessageHistory:true}); return interaction.reply({ embeds:[success(`تمت إضافة ${member} إلى التذكرة ${interaction.channel}.`)] }); } };

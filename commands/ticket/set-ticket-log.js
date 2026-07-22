@@ -1,0 +1,4 @@
+const { SlashCommandBuilder, ChannelType, PermissionFlagsBits } = require('discord.js');
+const db = require('../../database/db');
+const { success } = require('../../utils/embeds');
+module.exports = { category:'ticket', data:new SlashCommandBuilder().setName('set-ticket-log').setDescription('تحديد روم اللوغ').setDefaultMemberPermissions(PermissionFlagsBits.Administrator).addStringOption(o=>o.setName('type').setDescription('اللوغ المطلوب').setRequired(true).addChoices({name:'إغلاق/حذف التذاكر',value:'ticket'})).addChannelOption(o=>o.setName('room').setDescription('اختر الروم').addChannelTypes(ChannelType.GuildText).setRequired(true)), async execute(interaction){ const room=interaction.options.getChannel('room'); db.updateTicketSettings(interaction.guild.id,{log_channel:room.id}); return interaction.reply({embeds:[success(`تم تحديد روم لوغ التذاكر: ${room}`)],flags:['Ephemeral']}); }};

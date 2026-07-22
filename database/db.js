@@ -826,15 +826,32 @@ const helpers = {
     if (data.support_message !== undefined) current.support_message = data.support_message;
     if (data.ticket_message !== undefined) current.ticket_message = data.ticket_message;
     if (data.panel_data !== undefined) current.panel_data = typeof data.panel_data === 'string' ? JSON.parse(data.panel_data) : data.panel_data;
+    if (data.presets !== undefined) current.presets = typeof data.presets === 'string' ? JSON.parse(data.presets) : data.presets;
+    if (data.welcome_templates !== undefined) current.welcome_templates = typeof data.welcome_templates === 'string' ? JSON.parse(data.welcome_templates) : data.welcome_templates;
 
     cache.ticket_settings.set(guildId, current);
     return safeCollection('ticket_settings').updateOne({ guildId }, { $set: stripId(current) }, { upsert: true }).then(() => ({ changes: 1 })).catch(() => ({ changes: 0 }));
   },
-  createTicket(guildId, userId, channelId, category) {
+  createTicket(guildId, userId, channelId, category, metadata = {}) {
     const timestamp = Math.floor(Date.now() / 1000);
-    const doc = { guildId, userId, channelId, status: 'open', category, created_at: timestamp };
+    const doc = { guildId, userId, ownerId: userId, channelId, status: 'open', category, created_at: timestamp, createdAt: new Date(timestamp * 1000).toISOString(), ...metadata };
     cache.tickets.push(doc);
     safeCollection('tickets').insertOne(doc).catch(console.error);
+    return { changes: 1 };
+  },
+  getTickets(guildId) {
+    return cache.tickets.filter(t => t.guildId === guildId);
+  },
+  updateTicket(channelId, data) {
+    const t = cache.tickets.find(tk => tk.channelId === channelId);
+    if (!t) return null;
+    Object.assign(t, stripId(data));
+    safeCollection('tickets').updateOne({ channelId }, { $set: stripId(data) }).catch(console.error);
+    return t;
+  },
+  deleteTicket(channelId) {
+    cache.tickets = cache.tickets.filter(t => t.channelId !== channelId);
+    safeCollection('tickets').deleteMany({ channelId }).catch(console.error);
     return { changes: 1 };
   },
   getTicketByChannel(channelId) {
@@ -1082,6 +1099,8 @@ getTicketWarnings(guildId, userId) {
     let current = this.getFormsSettings(guildId);
     if (data.log_channel !== undefined) current.log_channel = data.log_channel;
     if (data.panel_data !== undefined) current.panel_data = typeof data.panel_data === 'string' ? JSON.parse(data.panel_data) : data.panel_data;
+    if (data.presets !== undefined) current.presets = typeof data.presets === 'string' ? JSON.parse(data.presets) : data.presets;
+    if (data.welcome_templates !== undefined) current.welcome_templates = typeof data.welcome_templates === 'string' ? JSON.parse(data.welcome_templates) : data.welcome_templates;
     if (data.questions !== undefined) current.questions = typeof data.questions === 'string' ? JSON.parse(data.questions) : data.questions;
 
     cache.forms_settings.set(guildId, current);
@@ -1100,6 +1119,8 @@ getTicketWarnings(guildId, userId) {
   updateReactionRoles(guildId, data) {
     let current = this.getReactionRoles(guildId);
     if (data.panel_data !== undefined) current.panel_data = typeof data.panel_data === 'string' ? JSON.parse(data.panel_data) : data.panel_data;
+    if (data.presets !== undefined) current.presets = typeof data.presets === 'string' ? JSON.parse(data.presets) : data.presets;
+    if (data.welcome_templates !== undefined) current.welcome_templates = typeof data.welcome_templates === 'string' ? JSON.parse(data.welcome_templates) : data.welcome_templates;
     if (data.roles_data !== undefined) current.roles_data = typeof data.roles_data === 'string' ? JSON.parse(data.roles_data) : data.roles_data;
 
     cache.reaction_roles.set(guildId, current);
@@ -1122,6 +1143,8 @@ getTicketWarnings(guildId, userId) {
     if (data.verified_role !== undefined) current.verified_role = data.verified_role;
     if (data.panel_channel !== undefined) current.panel_channel = data.panel_channel;
     if (data.panel_data !== undefined) current.panel_data = typeof data.panel_data === 'string' ? JSON.parse(data.panel_data) : data.panel_data;
+    if (data.presets !== undefined) current.presets = typeof data.presets === 'string' ? JSON.parse(data.presets) : data.presets;
+    if (data.welcome_templates !== undefined) current.welcome_templates = typeof data.welcome_templates === 'string' ? JSON.parse(data.welcome_templates) : data.welcome_templates;
 
     cache.captcha_settings.set(guildId, current);
     return safeCollection('captcha_settings').updateOne({ guildId }, { $set: stripId(current) }, { upsert: true }).then(() => ({ changes: 1 })).catch(() => ({ changes: 0 }));

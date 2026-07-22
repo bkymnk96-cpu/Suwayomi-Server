@@ -171,6 +171,29 @@ module.exports = {
     if (interaction.isButton()) {
       const id = interaction.customId;
 
+
+      if (id === 'delete' || id === 'Open' || id === 'Tran') {
+          const ticket = db.getTicketByChannel(interaction.channel.id);
+          if (!ticket) return interaction.reply({ content: '{emoji:circlex} هذه القناة ليست تذكرة', flags: ['Ephemeral'] });
+          const settings = db.getTicketSettings(interaction.guild.id);
+          const staffRole = settings.staff_role;
+          const hasBypass = interaction.member.permissions.has('Administrator') || (staffRole && interaction.member.roles.cache.has(staffRole));
+          if (!hasBypass) return interaction.reply({ content: '{emoji:circlex} هذا الإجراء مخصص لطاقم الدعم والإدارة فقط.', flags: ['Ephemeral'] });
+          if (id === 'Open') {
+              db.updateTicket(interaction.channel.id, { status: 'open', closedAt: null, closedBy: null });
+              await interaction.channel.permissionOverwrites.edit(ticket.userId || ticket.ownerId, { ViewChannel: true, SendMessages: true }).catch(() => null);
+              return interaction.reply({ content: '{emoji:circlecheck} تم إعادة فتح التذكرة بنجاح' });
+          }
+          if (id === 'Tran') {
+              const attachment = await discordTranscripts.createTranscript(interaction.channel, { limit: -1, returnType: 'attachment', filename: `${interaction.channel.name}.html` }).catch(() => null);
+              return interaction.reply({ content: '{emoji:folderopen} نسخة نصية للتذكرة', files: attachment ? [attachment] : [] });
+          }
+          await interaction.reply({ content: '{emoji:trash} سيتم حذف التذكرة نهائياً خلال 5 ثواني...' });
+          db.deleteTicket(interaction.channel.id);
+          setTimeout(async () => interaction.channel.delete().catch(() => null), 5000);
+          return;
+      }
+
       if (id === 'ticket_delete') {
           const ticket = db.getTicketByChannel(interaction.channel.id);
           if (!ticket) {
@@ -893,7 +916,7 @@ if (
 
 if (
     interaction.isButton() &&
-    interaction.customId === "ticket_create_btn"
+    (interaction.customId === "ticket_create_btn" || interaction.customId === "ticket" || interaction.customId.startsWith("ticket_select_"))
 ) {
 
     const settings = await db.getTicketSettings(
@@ -972,13 +995,15 @@ await db.createTicket(
 const buttons = [
 
 new ButtonBuilder()
-.setCustomId("claim_ticket")
-.setLabel("استلام التذكرة")
+.setCustomId("claim")
+.setLabel("استلام")
+.setEmoji(require('../utils/emojis').circlecheck.toString())
 .setStyle(ButtonStyle.Success),
 
 new ButtonBuilder()
-.setCustomId("close_ticket")
-.setLabel("إغلاق التذكرة")
+.setCustomId("close")
+.setLabel("إغلاق")
+.setEmoji(require('../utils/emojis').lock.toString())
 .setStyle(ButtonStyle.Danger)
 
 ];
@@ -1226,7 +1251,7 @@ await logTicket(
 
 }
 
-if (interaction.customId === "claim_ticket") {
+if (interaction.customId === "claim_ticket" || interaction.customId === "claim") {
 
     const ticket = db.getTicketByChannel(interaction.channel.id);
 
@@ -1278,7 +1303,7 @@ if (interaction.customId === "claim_ticket") {
 
 }
 
-if (interaction.customId === "close_ticket") {
+if (interaction.customId === "close_ticket" || interaction.customId === "close") {
 
     const ticket = db.getTicketByChannel(interaction.channel.id);
 
@@ -1387,14 +1412,14 @@ if (interaction.isButton()) {
 
 if (
     interaction.isStringSelectMenu() &&
-    interaction.customId === "ticket_control_menu"
+    (interaction.customId === "ticket_control_menu" || interaction.customId === "supportPanel")
 ) {
     action = interaction.values[0];
 }
 
 const ticket = db.getTicketByChannel(interaction.channel.id);
 
-const ticketActions = ["lock_ticket", "unlock_ticket", "rename_ticket", "add_member", "remove_member", "blacklist_user", "warn_user"];
+const ticketActions = ["lock_ticket", "unlock_ticket", "rename_ticket", "renameTicket", "add_member", "addMemberToTicket", "remove_member", "removeMemberFromTicket", "blacklist_user", "warn_user", "refreshSupportPanel"];
 if (action && ticketActions.includes(action)) {
     if (!ticket) {
         return interaction.reply({
@@ -1446,7 +1471,7 @@ if (action === "unlock_ticket") {
 }
 
 
-if (action === "rename_ticket") {
+if (action === "rename_ticket" || action === "renameTicket") {
 
     const modal = new ModalBuilder()
         .setCustomId("rename_ticket_modal")
@@ -1468,10 +1493,10 @@ if (action === "rename_ticket") {
 
 if (interaction.isModalSubmit()) {
 
-    if (interaction.customId === "rename_ticket_modal") {
+    if (interaction.customId === "rename_ticket_modal" || interaction.customId === "renameTicketSubmitModal") {
 
         const newName = interaction.fields
-            .getTextInputValue("new_ticket_name")
+            .getTextInputValue(interaction.customId === "renameTicketSubmitModal" ? "newNameValue" : "new_ticket_name")
             .trim();
 
         await interaction.channel.setName(newName);
@@ -1496,7 +1521,7 @@ if (interaction.isModalSubmit()) {
 
 }
 
-if (action === "add_member") {
+if (action === "add_member" || action === "addMemberToTicket") {
 
     const modal = new ModalBuilder()
         .setCustomId("add_member_modal")
@@ -1515,7 +1540,7 @@ if (action === "add_member") {
     return interaction.showModal(modal);
 }
 
-if (action === "remove_member") {
+if (action === "remove_member" || action === "removeMemberFromTicket") {
 
     const modal = new ModalBuilder()
         .setCustomId("remove_member_modal")
@@ -1534,10 +1559,10 @@ if (action === "remove_member") {
     return interaction.showModal(modal);
 }
 
-if (interaction.customId === "add_member_modal") {
+if (interaction.customId === "add_member_modal" || interaction.customId === "addMemberToTicketSubmitModal") {
 
     let userId = interaction.fields
-        .getTextInputValue("member_id")
+        .getTextInputValue(interaction.customId === "addMemberToTicketSubmitModal" ? "addMemberToTicketMemberId" : "member_id")
         .trim();
 
     userId = userId.replace(/[<@!>]/g, "");
@@ -1578,10 +1603,10 @@ if (interaction.customId === "add_member_modal") {
     });
 }
 
-if (interaction.customId === "remove_member_modal") {
+if (interaction.customId === "remove_member_modal" || interaction.customId === "removeMemberFromTicketSubmitModal") {
 
     let userId = interaction.fields
-        .getTextInputValue("member_id")
+        .getTextInputValue(interaction.customId === "removeMemberFromTicketSubmitModal" ? "removeMemberFromTicketMemberId" : "member_id")
         .trim();
 
     userId = userId.replace(/[<@!>]/g, "");

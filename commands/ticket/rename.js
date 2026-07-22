@@ -1,0 +1,5 @@
+const { SlashCommandBuilder } = require('discord.js');
+const db = require('../../database/db');
+const { success, error } = require('../../utils/embeds');
+const { canManageTicket } = require('../../utils/ticketUtils');
+module.exports = { category: 'ticket', data: new SlashCommandBuilder().setName('rename').setDescription('تغيير اسم قناة التذكرة الحالية').addStringOption(o => o.setName('name').setDescription('اكتب اسم القناة الجديد').setRequired(true)), async execute(interaction) { const ticket = db.getTicketByChannel(interaction.channel.id); if (!ticket) return interaction.reply({ embeds:[error('هذه القناة ليست تذكرة')], flags:['Ephemeral'] }); if (!canManageTicket(interaction.member, ticket, db.getTicketSettings(interaction.guild.id))) return interaction.reply({ embeds:[error('لا تمتلك صلاحية تغيير اسم هذه التذكرة.')], flags:['Ephemeral'] }); const name = interaction.options.getString('name'); await interaction.channel.setName(name); db.updateTicket(interaction.channel.id, { renamedAt: Date.now(), renamedBy: interaction.user.id }); return interaction.reply({ embeds:[success(`تم تغيير اسم التذكرة إلى \`${name}\``)], flags:['Ephemeral'] }); } };

@@ -355,7 +355,7 @@ module.exports = (client) => {
         const aliasesByCommand = new Map(aliases.map(a => [a.command, a.shortcut]));
         const settingsByCommand = new Map(db.getAllCommandSettings(guildId).map(c => [c.command, c]));
         const ar = { admin: 'الإدارة', ticket: 'التذاكر', public: 'عام', levels: 'المستويات', protection: 'الحماية', automation: 'الأتمتة', giveaway: 'الهدايا', invite: 'الدعوات', greet: 'الترحيب', games: 'الألعاب', music: 'الموسيقى', utils: 'الأدوات' };
-        const defaults = { ban: 'باند', kick: 'طرد', clear: 'مسح', ticket: 'تكت', 'ticket-setup': 'اعداد-تكت', close: 'اغلاق', open: 'فتح', 'admin-points': 'نقاط', 'admin-profile': 'ملف-اداري', help: 'مساعدة', ping: 'بنق' };
+        const defaults = { ban: 'باند', kick: 'طرد', clear: 'مسح', ticket: 'تكت', 'ticket-setup': 'اعداد-تكت', 'setup-ticket': 'اعداد-تكت', 'add-ticket-button': 'زر-تكت', 'add-user': 'اضافة-عضو', 'remove-user': 'ازالة-عضو', rename: 'تسمية', close: 'اغلاق', delete: 'حذف', open: 'فتح', 'send-preset': 'لوحة-جاهزة', 'set-ticket-log': 'لوغ-تكت', 'to-select': 'سلكت-تكت', 'welcome-setup': 'ترحيب-تكت', 'admin-points': 'نقاط', 'admin-profile': 'ملف-اداري', help: 'مساعدة', ping: 'بنق' };
         return [...client.commands.values()].map(cmd => {
             const json = cmd.data?.toJSON ? cmd.data.toJSON() : cmd.data;
             const name = json?.name || cmd.name;

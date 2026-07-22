@@ -1,27 +1,5 @@
-const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
-const locale = require('../../utils/locale');
-const { success, error } = require('../../utils/embeds');
+const { SlashCommandBuilder } = require('discord.js');
 const db = require('../../database/db');
-
-module.exports = {
-  data: new SlashCommandBuilder()
-    .setName('open')
-    .setDescription('فتح التذكرة الحالية')
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels),
-
-  async execute(interaction) {
-    const ticket = db.getTicketByChannel(interaction.channelId);
-    if (!ticket) return interaction.reply({ embeds: [error(locale.get('tickets.notTicket'))], flags: ['Ephemeral'] });
-    if (ticket.status === 'open') return interaction.reply({ embeds: [error(locale.get('tickets.alreadyOpen'))], flags: ['Ephemeral'] });
-
-    const settings = db.getTicketSettings(interaction.guildId);
-    const user = await interaction.client.users.fetch(ticket.userId).catch(() => null);
-
-    await interaction.channel.permissionOverwrites.edit(ticket.userId, { ViewChannel: true, SendMessages: true });
-    if (settings.staff_role) await interaction.channel.permissionOverwrites.edit(settings.staff_role, { ViewChannel: true, SendMessages: true });
-
-    db.updateTicketStatus(interaction.channelId, 'open');
-
-    return interaction.reply({ embeds: [success(locale.get('tickets.reopened', { user: interaction.user }))] });
-  }
-};
+const { success, error } = require('../../utils/embeds');
+const { canManageTicket } = require('../../utils/ticketUtils');
+module.exports = { category:'ticket', data:new SlashCommandBuilder().setName('open').setDescription('فتح التذكرة الحالية'), async execute(interaction){ const ticket=db.getTicketByChannel(interaction.channel.id); if(!ticket) return interaction.reply({embeds:[error('هذه القناة ليست تذكرة')],flags:['Ephemeral']}); if(!canManageTicket(interaction.member,ticket,db.getTicketSettings(interaction.guild.id))) return interaction.reply({embeds:[error('هذا الأمر متاح لفريق الدعم أو الإداريين فقط.')],flags:['Ephemeral']}); if(ticket.status==='open') return interaction.reply({embeds:[error('هذه التذكرة مفتوحة بالفعل.')],flags:['Ephemeral']}); const ownerId=ticket.userId||ticket.ownerId; if(ownerId) await interaction.channel.permissionOverwrites.edit(ownerId,{ViewChannel:true,SendMessages:true}).catch(()=>null); db.updateTicket(interaction.channel.id,{status:'open',closedAt:null,closedBy:null}); return interaction.reply({embeds:[success(`تم إعادة فتح التذكرة بواسطة ${interaction.user}`)]}); }};
