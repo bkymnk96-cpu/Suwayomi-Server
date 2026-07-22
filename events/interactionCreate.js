@@ -32,6 +32,10 @@ module.exports = {
       if (!command) return;
 
       try {
+        const setting = db.getCommandSetting(interaction.guildId, interaction.commandName);
+        if (setting.disabled) return interaction.reply({ content: '{emoji:circlex} هذا الأمر معطل حالياً من لوحة أوامري.', flags: ['Ephemeral'] });
+        if (setting.denyRoles?.some(roleId => interaction.member.roles.cache.has(roleId))) return interaction.reply({ content: '{emoji:circlex} رتبتك ممنوعة من استخدام هذا الأمر.', flags: ['Ephemeral'] });
+        if (setting.allowRoles?.length && !setting.allowRoles.some(roleId => interaction.member.roles.cache.has(roleId)) && !interaction.member.permissions.has('Administrator')) return interaction.reply({ content: '{emoji:circlex} هذا الأمر مخصص لرتب محددة.', flags: ['Ephemeral'] });
         await command.execute(interaction);
       } catch (e) {
         console.error(`Slash command error [${interaction.commandName}]:`, e);
@@ -160,64 +164,66 @@ module.exports = {
     if (interaction.isButton()) {
       const id = interaction.customId;
 
-      if (id === 'ticket_delete') {
+      if (['ticket_delete', 'delete', 'ticket_reopen', 'Open', 'Tran', 'claim', 'unclaim', 'close', 'Yes11', 'No11'].includes(id)) {
+          const adv = require('../utils/ticketAdvanced');
+          const adminPoints = require('../utils/adminPoints');
           const ticket = db.getTicketByChannel(interaction.channel.id);
-          if (!ticket) {
-              return interaction.reply({ content: '{emoji:circlex} لم يتم العثور على بيانات التذكرة', flags: ['Ephemeral'] });
-          }
-          
           const settings = db.getTicketSettings(interaction.guild.id);
-          const staffRole = settings.staff_role;
-          const hasBypass = interaction.member.permissions.has('Administrator') || 
-                            (staffRole && interaction.member.roles.cache.has(staffRole));
+          if (!ticket) return interaction.reply({ content: '{emoji:circlex} هذه القناة ليست تذكرة.', flags: ['Ephemeral'] });
 
-          if (!hasBypass) {
-              return interaction.reply({ content: '{emoji:circlex} هذا الإجراء مخصص لطاقم الدعم والإدارة فقط.', flags: ['Ephemeral'] });
+          if (id === 'close') {
+              if (!adv.canClose(interaction.member, interaction.user, ticket, settings)) return interaction.reply({ content: '{emoji:circlex} لا تمتلك صلاحية إغلاق هذه التذكرة.', flags: ['Ephemeral'] });
+              const row = new ActionRowBuilder().addComponents(
+                  new ButtonBuilder().setCustomId('Yes11').setLabel('إغلاق').setEmoji('{emoji:lock}').setStyle(ButtonStyle.Danger),
+                  new ButtonBuilder().setCustomId('No11').setLabel('إلغاء').setEmoji('{emoji:circlex}').setStyle(ButtonStyle.Secondary)
+              );
+              return interaction.reply({ content: '{emoji:warning} هل أنت متأكد من إغلاق التذكرة؟', components: [row], flags: ['Ephemeral'] });
           }
-
-          await interaction.reply({ content: '{emoji:trash} سيتم حذف التذكرة نهائياً خلال 5 ثواني...' });
-          
-          setTimeout(async () => {
-              await interaction.channel.delete().catch(() => null);
-          }, 5000);
-          
-          await logTicket(
-              interaction.guild,
-              settings,
-              "{emoji:trash} Ticket Deleted",
-              `التذكرة: ${interaction.channel.name}\nحذفت بواسطة: ${interaction.user}`,
-              "#ef4444"
-          );
-          return;
-      }
-
-      if (id === 'ticket_reopen') {
-          const ticket = db.getTicketByChannel(interaction.channel.id);
-          if (!ticket) {
-              return interaction.reply({ content: '{emoji:circlex} لم يتم العثور على بيانات التذكرة', flags: ['Ephemeral'] });
+          if (id === 'No11') return interaction.update({ content: '{emoji:circlex} تم إلغاء الإغلاق.', components: [] }).catch(() => null);
+          if (id === 'Yes11') {
+              if (!adv.canClose(interaction.member, interaction.user, ticket, settings)) return interaction.reply({ content: '{emoji:circlex} لا تمتلك صلاحية إغلاق هذه التذكرة.', flags: ['Ephemeral'] });
+              await interaction.channel.permissionOverwrites.edit(ticket.userId, { ViewChannel: false, SendMessages: false }).catch(() => null);
+              db.updateTicketStatus(interaction.channel.id, 'closed');
+              adminPoints.add(interaction.guild.id, interaction.user.id, 1, 'إغلاق تذكرة', interaction.user.id, 'ticketClose');
+              const embed = new EmbedBuilder().setColor(0xD4AF37).setTitle('{emoji:lock} تم إغلاق التذكرة').setDescription(`تم إغلاق التذكرة بواسطة ${interaction.user}\nيمكن لفريق الدعم فتحها أو حذفها أو استخراج نسخة نصية.`).setTimestamp();
+              await interaction.update({ content: '', embeds: [embed], components: [adv.closeControlRow()] }).catch(async()=>interaction.reply({embeds:[embed],components:[adv.closeControlRow()]}));
+              const logCh = interaction.guild.channels.cache.get(settings.log_channel);
+              if (logCh) logCh.send({ embeds: [adv.closeLogEmbed(ticket, interaction.channel, interaction.user)] }).catch(() => null);
+              return;
           }
-          
-          const settings = db.getTicketSettings(interaction.guild.id);
-          const staffRole = settings.staff_role;
-          const hasBypass = interaction.member.permissions.has('Administrator') || 
-                            (staffRole && interaction.member.roles.cache.has(staffRole));
-
-          if (!hasBypass) {
-              return interaction.reply({ content: '{emoji:circlex} هذا الإجراء مخصص لطاقم الدعم والإدارة فقط.', flags: ['Ephemeral'] });
+          if (!adv.isStaff(interaction.member, settings)) return interaction.reply({ content: '{emoji:circlex} هذا الإجراء مخصص لفريق الدعم والإدارة فقط.', flags: ['Ephemeral'] });
+          if (id === 'claim') {
+              db.claimTicket(interaction.channel.id, interaction.user.id);
+              adminPoints.add(interaction.guild.id, interaction.user.id, 1, 'استلام تذكرة', interaction.user.id, 'ticketClaim');
+              if (settings.staff_role) await interaction.channel.permissionOverwrites.edit(settings.staff_role, { SendMessages: false }).catch(() => null);
+              await interaction.channel.permissionOverwrites.edit(interaction.user.id, { SendMessages: true }).catch(() => null);
+              await interaction.update({ components: adv.supportPanelRows(interaction.user.username) }).catch(() => null);
+              return interaction.channel.send({ embeds: [new EmbedBuilder().setColor(0xD4AF37).setDescription(`{emoji:circlecheck} ${interaction.user} قام باستلام التذكرة.`)] });
           }
-
-          db.updateTicketStatus(interaction.channel.id, 'open');
-          await interaction.channel.permissionOverwrites.edit(ticket.userId, { ViewChannel: true, SendMessages: true });
-
-          await interaction.reply({ content: '{emoji:tv_unlock} تم إعادة فتح التذكرة بنجاح' });
-          
-          await logTicket(
-              interaction.guild,
-              settings,
-              "{emoji:tv_unlock} Ticket Reopened",
-              `بواسطة: ${interaction.user}`
-          );
-          return;
+          if (id === 'unclaim') {
+              if (ticket.claimedBy && ticket.claimedBy !== interaction.user.id && !interaction.member.permissions.has('Administrator')) return interaction.reply({ content: '{emoji:circlex} التذكرة ليست مستلمة باسمك.', flags: ['Ephemeral'] });
+              db.claimTicket(interaction.channel.id, null);
+              if (settings.staff_role) await interaction.channel.permissionOverwrites.edit(settings.staff_role, { SendMessages: true }).catch(() => null);
+              await interaction.update({ components: adv.supportPanelRows() }).catch(() => null);
+              return interaction.channel.send({ embeds: [new EmbedBuilder().setColor(0xD4AF37).setDescription(`{emoji:circlex} ${interaction.user} ألغى استلام التذكرة.`)] });
+          }
+          if (id === 'ticket_reopen' || id === 'Open') {
+              db.updateTicketStatus(interaction.channel.id, 'open');
+              await interaction.channel.permissionOverwrites.edit(ticket.userId, { ViewChannel: true, SendMessages: true }).catch(() => null);
+              if (settings.staff_role) await interaction.channel.permissionOverwrites.edit(settings.staff_role, { ViewChannel: true, SendMessages: true }).catch(() => null);
+              return interaction.reply({ content: '{emoji:tv_unlock} تم إعادة فتح التذكرة بنجاح' });
+          }
+          if (id === 'Tran') {
+              const attachment = await discordTranscripts.createTranscript(interaction.channel, { limit: -1, returnType: 'attachment', filename: `${interaction.channel.name}.html` }).catch(() => null);
+              const logCh = interaction.guild.channels.cache.get(settings.log_channel);
+              if (attachment && logCh) await logCh.send({ content: `{emoji:file} نسخة نصية للتذكرة \`${interaction.channel.name}\``, files: [attachment] }).catch(() => null);
+              return interaction.reply({ content: attachment ? '{emoji:circlecheck} تم استخراج النسخة النصية.' : '{emoji:circlex} تعذر استخراج النسخة النصية.', flags: ['Ephemeral'] });
+          }
+          if (id === 'ticket_delete' || id === 'delete') {
+              await interaction.reply({ content: '{emoji:trash} سيتم حذف التذكرة نهائياً خلال 5 ثواني...', flags: ['Ephemeral'] });
+              setTimeout(async () => { await interaction.channel.delete().catch(() => null); }, 5000);
+              return;
+          }
       }
 
       if (id.startsWith('box_')) {
@@ -918,8 +924,10 @@ if (existing) {
     });
 }
 
+const adv = require('../utils/ticketAdvanced');
+const ticketId = adv.nextTicketNumber(interaction.guild.id);
 const channel = await interaction.guild.channels.create({
-    name: `ticket-${interaction.user.username}`,
+    name: adv.ticketName(ticketId),
     type: ChannelType.GuildText,
 
     parent: settings.category_id || null,
@@ -955,147 +963,11 @@ await db.createTicket(
     interaction.guild.id,
     interaction.user.id,
     channel.id,
-    "general"
+    "general",
+    { ticketId, supportRoleId: settings.staff_role }
 );
 
-const buttons = [
-
-new ButtonBuilder()
-.setCustomId("claim_ticket")
-.setLabel("استلام التذكرة")
-.setStyle(ButtonStyle.Success),
-
-new ButtonBuilder()
-.setCustomId("close_ticket")
-.setLabel("إغلاق التذكرة")
-.setStyle(ButtonStyle.Danger)
-
-];
-
-const menuOptions = [
-
-{
-label: "إضافة عضو",
-value: "add_member"
-},
-
-{
-label: "إزالة عضو",
-value: "remove_member"
-}
-
-];
-
-const actionLabels = {
-
-call_user: "Call User",
-call_support: "Call Support",
-call_owners: "Call Owners",
-warn_user: "Warn User",
-blacklist_user: "Blacklist User",
-rename_ticket: "Rename Ticket",
-lock_ticket: "Lock Ticket",
-unlock_ticket: "Unlock Ticket"
-
-};
-
-if (
-    panelData.panel_mode === "advanced" &&
-    panelData.actions
-) {
-
-    for (const [action, mode] of Object.entries(panelData.actions || {})) {
-
-        if (mode === "button") {
-
-            buttons.push(
-                new ButtonBuilder()
-                    .setCustomId(action)
-                    .setLabel(actionLabels[action] || action)
-                    .setStyle(ButtonStyle.Secondary)
-            );
-
-        }
-
-        if (mode === "menu") {
-
-            menuOptions.push({
-                label: actionLabels[action] || action,
-                value: action
-            });
-
-        }
-
-    }
-
-}
-
-for (const btn of panelData.custom_buttons || []) {
-
-    if (!btn.label?.trim()) continue;
-
-    buttons.push(
-        new ButtonBuilder()
-        .setCustomId(`custom_btn_${buttons.length}`)
-        .setLabel(btn.label)
-        .setEmoji(btn.emoji || null)
-        .setStyle(
-            ButtonStyle[btn.style] ||
-            ButtonStyle.Primary
-        )
-    );
-
-}
-
-const rows = [];
-
-for (let i = 0; i < buttons.length; i += 5) {
-
-    rows.push(
-        new ActionRowBuilder()
-        .addComponents(
-            buttons.slice(i, i + 5)
-        )
-    );
-
-}
-
-rows.push(
-    new ActionRowBuilder()
-    .addComponents(
-        new StringSelectMenuBuilder()
-        .setCustomId("ticket_control_menu")
-        .setPlaceholder("لوحة التحكم")
-        .addOptions(menuOptions)
-    )
-);
-
-for (const menu of panelData.custom_menus || []) {
-
-    if (!menu.options?.length) continue;
-
-    rows.push(
-        new ActionRowBuilder().addComponents(
-            new StringSelectMenuBuilder()
-                .setCustomId(`custom_menu_${rows.length}`)
-                .setPlaceholder(
-                    menu.placeholder || "اختر"
-                )
-                .addOptions(
-                    menu.options.map((o, i) => ({
-                        label: o.label || `Option ${i + 1}`,
-                        value: `custom_option_${i}`,
-                        description: o.description || undefined,
-                        emoji: o.emoji || undefined
-                    }))
-                )
-        )
-    );
-}
-
-
-
-
+const rows = adv.supportPanelRows();
 
 const ticketStyle = panelData.ticket_message_style || {};
 

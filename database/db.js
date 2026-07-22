@@ -48,6 +48,9 @@ const cache = {
   log_settings: new Map(),
   reactroles: [],
   aliases: [],
+  command_settings: [],
+  admin_points_config: new Map(),
+  admin_points: new Map(),
   tempvoice_settings: new Map(),
   jailed_users: new Map(),
   jail_settings: new Map(),
@@ -94,6 +97,8 @@ async function loadMongoCache() {
     { name: 'invite_uses', key: d => `${d.code}_${d.guildId}` },
     { name: 'invite_logs', key: d => d.guildId },
     { name: 'ticket_settings', key: d => d.guildId },
+    { name: 'admin_points_config', key: d => d.guildId },
+    { name: 'admin_points', key: d => d.guildId },
     { name: 'reaction_roles', key: d => d.guildId },
     { name: 'forms_settings', key: d => d.guildId },
     { name: 'captcha_settings', key: d => d.guildId },
@@ -115,7 +120,7 @@ async function loadMongoCache() {
   const arrayCollections = [
     'warnings', 'automation', 'whitelist', 'blacklist', 'invite_ranks',
     'tickets', 'auto_reply', 'reactroles', 'aliases', 'social_alerts',
-    'ticket_blacklist', 'ticket_warnings'
+    'ticket_blacklist', 'ticket_warnings', 'command_settings'
   ];
 
   for (const col of mapCollections) {
@@ -823,9 +828,9 @@ const helpers = {
     cache.ticket_settings.set(guildId, current);
     return safeCollection('ticket_settings').updateOne({ guildId }, { $set: stripId(current) }, { upsert: true }).then(() => ({ changes: 1 })).catch(() => ({ changes: 0 }));
   },
-  createTicket(guildId, userId, channelId, category) {
+  createTicket(guildId, userId, channelId, category, extra = {}) {
     const timestamp = Math.floor(Date.now() / 1000);
-    const doc = { guildId, userId, channelId, status: 'open', category, created_at: timestamp };
+    const doc = { guildId, userId, channelId, status: 'open', category, created_at: timestamp, ...extra };
     cache.tickets.push(doc);
     safeCollection('tickets').insertOne(doc).catch(console.error);
     return { changes: 1 };
@@ -840,6 +845,14 @@ const helpers = {
       safeCollection('tickets').updateOne({ channelId }, { $set: { status } }).catch(console.error);
     }
     return { changes: 1 };
+  },
+  nextTicketCounter(guildId) {
+    const settings = this.getTicketSettings(guildId);
+    const next = Number(settings.ticket_counter || 0) + 1;
+    settings.ticket_counter = next;
+    cache.ticket_settings.set(guildId, settings);
+    safeCollection('ticket_settings').updateOne({ guildId }, { $set: { ticket_counter: next } }, { upsert: true }).catch(console.error);
+    return next;
   },
   claimTicket(channelId, userId) {
     const ticket = cache.tickets.find(t => t.channelId === channelId);
@@ -975,6 +988,15 @@ getTicketWarnings(guildId, userId) {
   getAliases(guildId) {
     return cache.aliases.filter(a => a.guildId === guildId);
   },
+  getCommandSettings(guildId) { return cache.command_settings.filter(a => a.guildId === guildId); },
+  getCommandSetting(guildId, command) { return cache.command_settings.find(a => a.guildId === guildId && a.command === command) || { guildId, command, shortcut: '', allowRoles: [], denyRoles: [], disabled: false }; },
+  setCommandSetting(guildId, command, data) {
+    cache.command_settings = cache.command_settings.filter(a => !(a.guildId === guildId && a.command === command));
+    const doc = { guildId, command, shortcut: data.shortcut || '', allowRoles: data.allowRoles || [], denyRoles: data.denyRoles || [], disabled: Boolean(data.disabled) };
+    cache.command_settings.push(doc);
+    safeCollection('command_settings').updateOne({ guildId, command }, { $set: stripId(doc) }, { upsert: true }).catch(console.error);
+    return doc;
+  },
   addAlias(guildId, shortcut, command) {
     const doc = { guildId, shortcut, command };
     cache.aliases.push(doc);
@@ -986,6 +1008,20 @@ getTicketWarnings(guildId, userId) {
     safeCollection('aliases').deleteMany({ guildId, shortcut }).catch(console.error);
     return { changes: 1 };
   },
+
+  getAdminPointsConfig(guildId) {
+    let row = cache.admin_points_config.get(guildId);
+    if (!row) { row = { guildId, enabled: false, managers: [], trackedRoles: [], logChannelId: null, notifyAtMax: true, ranks: [] }; cache.admin_points_config.set(guildId, row); safeCollection('admin_points_config').insertOne(row).catch(() => null); }
+    return row;
+  },
+  updateAdminPointsConfig(guildId, data) {
+    const row = { ...this.getAdminPointsConfig(guildId), ...data, guildId };
+    cache.admin_points_config.set(guildId, row);
+    safeCollection('admin_points_config').updateOne({ guildId }, { $set: stripId(row) }, { upsert: true }).catch(console.error);
+    return row;
+  },
+  getAdminPoints(guildId) { return cache.admin_points.get(guildId)?.points || {}; },
+  setAdminPoints(guildId, points) { const row = { guildId, points }; cache.admin_points.set(guildId, row); safeCollection('admin_points').updateOne({ guildId }, { $set: stripId(row) }, { upsert: true }).catch(console.error); return points; },
 
   getFormsSettings(guildId) {
     let row = cache.forms_settings.get(guildId);

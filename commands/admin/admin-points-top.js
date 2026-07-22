@@ -1,0 +1,3 @@
+const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
+const points = require('../../utils/adminPoints');
+module.exports = { data: new SlashCommandBuilder().setName('admin-points-top').setDescription('أفضل الإداريين حسب النقاط'), async execute(interaction){ const top=points.leaderboard(interaction.guildId,10); const desc=top.length?top.map((p,i)=>`**${i+1}.** <@${p.userId}> — \`${p.total||0}\` نقطة`).join('\n'):'لا توجد نقاط مسجلة بعد'; return interaction.reply({embeds:[new EmbedBuilder().setColor(0xD4AF37).setTitle('{emoji:chartpie} ترتيب نقاط الإدارة').setDescription(desc).setTimestamp()]}); } };

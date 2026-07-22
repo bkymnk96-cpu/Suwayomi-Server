@@ -114,6 +114,10 @@ module.exports = {
       }
 
       if (slashCmd) {
+        const setting = db.getCommandSetting(guildId, slashCmd.data.name);
+        if (setting.disabled) return message.reply({ content: '{emoji:circlex} هذا الأمر معطل حالياً من لوحة أوامري.' }).catch(() => null);
+        if (setting.denyRoles?.some(roleId => message.member.roles.cache.has(roleId))) return message.reply({ content: '{emoji:circlex} رتبتك ممنوعة من استخدام هذا الأمر.' }).catch(() => null);
+        if (setting.allowRoles?.length && !setting.allowRoles.some(roleId => message.member.roles.cache.has(roleId)) && !message.member.permissions.has('Administrator')) return message.reply({ content: '{emoji:circlex} هذا الأمر مخصص لرتب محددة.' }).catch(() => null);
         await runSlash(slashCmd, runArgs);
         return;
       }
