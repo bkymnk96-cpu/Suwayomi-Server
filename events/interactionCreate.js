@@ -156,6 +156,44 @@ module.exports = {
             return interaction.update({ embeds: [embed] }).catch(() => null);
         }
     
+
+    if (interaction.isStringSelectMenu() && interaction.customId === 'supportPanel') {
+      const adv = require('../utils/ticketAdvanced');
+      const ticket = db.getTicketByChannel(interaction.channel.id);
+      const settings = db.getTicketSettings(interaction.guild.id);
+      if (!ticket) return interaction.reply({ content: '{emoji:circlex} هذه القناة ليست تذكرة.', flags: ['Ephemeral'] });
+      if (!adv.isStaff(interaction.member, settings)) return interaction.reply({ content: '{emoji:circlex} لا تمتلك الصلاحية لفعل هذا.', flags: ['Ephemeral'] });
+      const value = interaction.values[0];
+      if (value === 'refreshSupportPanel') return interaction.update({ components: adv.supportPanelRows(ticket.claimedBy ? interaction.user.username : null) }).catch(() => null);
+      const modalIds = { renameTicket: ['renameTicketSubmitModal', 'تغيير اسم التذكرة', 'newNameValue', 'اسم التذكرة الجديد'], addMemberToTicket: ['addMemberToTicketSubmitModal', 'إضافة عضو للتذكرة', 'addMemberToTicketMemberId', 'آيدي العضو'], removeMemberFromTicket: ['removeMemberFromTicketSubmitModal', 'حذف عضو من التذكرة', 'removeMemberFromTicketMemberId', 'آيدي العضو'] };
+      const data = modalIds[value];
+      if (data) {
+        const modal = new ModalBuilder().setCustomId(data[0]).setTitle(data[1]);
+        modal.addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId(data[2]).setLabel(data[3]).setStyle(TextInputStyle.Short).setRequired(true)));
+        return interaction.showModal(modal);
+      }
+    }
+
+    if (interaction.isModalSubmit() && ['renameTicketSubmitModal', 'addMemberToTicketSubmitModal', 'removeMemberFromTicketSubmitModal'].includes(interaction.customId)) {
+      const adv = require('../utils/ticketAdvanced');
+      const ticket = db.getTicketByChannel(interaction.channel.id);
+      const settings = db.getTicketSettings(interaction.guild.id);
+      if (!ticket) return interaction.reply({ content: '{emoji:circlex} هذه القناة ليست تذكرة.', flags: ['Ephemeral'] });
+      if (!adv.isStaff(interaction.member, settings)) return interaction.reply({ content: '{emoji:circlex} لا تمتلك الصلاحية لفعل هذا.', flags: ['Ephemeral'] });
+      if (interaction.customId === 'renameTicketSubmitModal') {
+        const newName = interaction.fields.getTextInputValue('newNameValue').replace(/[^a-zA-Z0-9\u0600-\u06FF-_]/g, '-').slice(0, 90);
+        await interaction.channel.setName(newName).catch(() => null);
+        return interaction.reply({ content: `{emoji:circlecheck} تم تغيير اسم التذكرة إلى \`${newName}\`` });
+      }
+      const field = interaction.customId === 'addMemberToTicketSubmitModal' ? 'addMemberToTicketMemberId' : 'removeMemberFromTicketMemberId';
+      const memberId = interaction.fields.getTextInputValue(field).replace(/[<@!>]/g, '').trim();
+      const member = await interaction.guild.members.fetch(memberId).catch(() => null);
+      if (!member) return interaction.reply({ content: '{emoji:circlex} لم أجد عضو بهذا الآيدي.', flags: ['Ephemeral'] });
+      const allow = interaction.customId === 'addMemberToTicketSubmitModal';
+      await interaction.channel.permissionOverwrites.edit(member.id, { ViewChannel: allow, SendMessages: allow, ReadMessageHistory: allow }).catch(() => null);
+      return interaction.reply({ content: allow ? `{emoji:userplus} تمت إضافة ${member} للتذكرة.` : `{emoji:userx} تمت إزالة ${member} من التذكرة.` });
+    }
+
     //-----------------------------//
     // Handle Box
     /*4*/
@@ -886,16 +924,27 @@ if (
     !interaction.isModalSubmit()
 ) return;
 
-if (
-    interaction.isButton() &&
-    interaction.customId === "ticket_create_btn"
-) {
+if (interaction.isModalSubmit() && interaction.customId.startsWith("ticket_reason_submit:")) {
+    const sourceId = interaction.customId.split(":")[1] || "ticket_create_btn";
+    interaction.customId = sourceId;
+    interaction.ticketReason = interaction.fields.getTextInputValue("ticket_reason");
+}
+
+if ((interaction.isButton() && (interaction.customId === "ticket_create_btn" || interaction.customId.startsWith("ticket_custom_"))) || (interaction.isStringSelectMenu() && interaction.customId === "ticket_select")) {
 
     const settings = await db.getTicketSettings(
         interaction.guild.id
     );
+    const ticketDesigner = require('../utils/ticketDesigner');
+    const selectedTicketCustomId = interaction.isStringSelectMenu?.() ? interaction.values[0] : interaction.customId;
+    const buttonConfig = ticketDesigner.resolveTicketButton(settings, selectedTicketCustomId) || {};
+    const panelData = { ...(settings.panel_data || {}), ...buttonConfig };
 
-    const panelData = settings.panel_data || {};
+    if (!interaction.ticketReason && panelData.askReason) {
+        const modal = new ModalBuilder().setCustomId(`ticket_reason_submit:${selectedTicketCustomId}`).setTitle('سبب فتح التذكرة');
+        modal.addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('ticket_reason').setLabel('ما سبب فتح التذكرة؟').setStyle(TextInputStyle.Paragraph).setRequired(true).setMaxLength(900)));
+        return interaction.showModal(modal);
+    }
 
     const existing = interaction.guild.channels.cache.find(c =>
     c.topic === `ticket:${interaction.user.id}`
@@ -930,7 +979,7 @@ const channel = await interaction.guild.channels.create({
     name: adv.ticketName(ticketId),
     type: ChannelType.GuildText,
 
-    parent: settings.category_id || null,
+    parent: panelData.categoryId || settings.category_id || null,
 
     topic: `ticket:${interaction.user.id}`,
 
@@ -949,8 +998,8 @@ const channel = await interaction.guild.channels.create({
             ]
         },
 
-        ...(settings.staff_role ? [{
-            id: settings.staff_role,
+        ...((panelData.supportRoleId || settings.staff_role) ? [{
+            id: panelData.supportRoleId || settings.staff_role,
             allow: [
                 PermissionsBitField.Flags.ViewChannel,
                 PermissionsBitField.Flags.SendMessages
@@ -964,12 +1013,12 @@ await db.createTicket(
     interaction.user.id,
     channel.id,
     "general",
-    { ticketId, supportRoleId: settings.staff_role }
+    { ticketId, supportRoleId: panelData.supportRoleId || settings.staff_role, reason: interaction.ticketReason || null }
 );
 
 const rows = adv.supportPanelRows();
 
-const ticketStyle = panelData.ticket_message_style || {};
+const ticketStyle = panelData.ticket_message_style || panelData.ticketMessageStyle || {};
 
 if(ticketStyle.type === "embed") {
 
@@ -1050,7 +1099,7 @@ else if(ticketStyle.type === "container") {
 }
 
 else {
-    const content = (settings.ticket_message || 'شكراً لفتح تذكرة! سيقوم الدعم بمساعدتك قريباً.')
+    const content = (panelData.welcomeMessage || settings.ticket_message || 'شكراً لفتح تذكرة! سيقوم الدعم بمساعدتك قريباً.')
         .replaceAll("{user}", `<@${interaction.user.id}>`)
         .replaceAll("{user_tag}", interaction.user.tag)
         .replaceAll("{server}", interaction.guild.name)
@@ -1077,12 +1126,15 @@ ephemeral: true
 
 });
 
+if (interaction.ticketReason) await channel.send({ embeds: [new EmbedBuilder().setColor(0xD4AF37).setTitle('{emoji:question} سبب فتح التذكرة').setDescription(interaction.ticketReason)] });
+
 await logTicket(
     interaction.guild,
     settings,
     "{emoji:folderopen} Ticket Opened",
     `المستخدم: ${interaction.user}
-القناة: ${channel}`
+القناة: ${channel}${interaction.ticketReason ? `
+السبب: ${interaction.ticketReason}` : ''}`
 );
 
 }

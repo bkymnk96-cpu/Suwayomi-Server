@@ -1,7 +1,7 @@
 <%- include('partials/header', { title: 'أوامري' }) %>
 <%- include('partials/sidebar', { activeTab: 'aliases' }) %>
 <main class="main-content">
-  <div class="page-header reveal"><h1><i class="fa-solid fa-terminal"></i> أوامري</h1><p>مركز مرئي لإدارة كل أوامر زيوس، اختصاراتها، الرتب المسموحة والممنوعة، وحالة كل أمر.</p></div>
+  <div class="page-header reveal"><h1><i class="fa-solid fa-terminal"></i> أوامري</h1><p>مركز مرئي لإدارة كل أوامر زيوس، اختصاراتها، الرتب المسموحة والممنوعة، وحالة كل أمر.</p><div class="command-actions"><form action="/dashboard/<%= guild.id %>/aliases/bulk" method="POST"><input type="hidden" name="action" value="enable"><button class="btn btn-primary" type="submit"><i class="fa-solid fa-toggle-on"></i> تفعيل الكل</button></form><form action="/dashboard/<%= guild.id %>/aliases/bulk" method="POST"><input type="hidden" name="action" value="disable"><button class="btn btn-danger" type="submit"><i class="fa-solid fa-toggle-off"></i> تعطيل الكل</button></form></div></div>
   <div class="command-center reveal">
     <section class="command-grid">
       <% const grouped = commands.reduce((a,c)=>{ (a[c.categoryName] ||= []).push(c); return a; }, {}); %>

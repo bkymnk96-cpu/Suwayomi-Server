@@ -391,6 +391,15 @@ module.exports = (client) => {
         res.redirect(`/dashboard/${req.guild.id}/aliases/${encodeURIComponent(command)}?success=تم+تحديث+الأمر`);
     });
 
+    router.post('/:id/aliases/bulk', checkAuth, checkGuildAccess, (req, res) => {
+        const action = req.body.action;
+        for (const command of commandCatalog(req.guild.id)) {
+            const current = db.getCommandSetting(req.guild.id, command.name);
+            db.setCommandSetting(req.guild.id, command.name, { ...current, disabled: action === 'disable' });
+        }
+        res.redirect(`/dashboard/${req.guild.id}/aliases?success=${action === 'disable' ? 'تم+تعطيل+كل+الأوامر' : 'تم+تفعيل+كل+الأوامر'}`);
+    });
+
     router.post('/:id/aliases/delete', checkAuth, checkGuildAccess, (req, res) => {
         const { shortcut } = req.body;
         if (shortcut) db.removeAlias(req.guild.id, shortcut);

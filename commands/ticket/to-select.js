@@ -1,0 +1,4 @@
+const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
+const designer = require('../../utils/ticketDesigner');
+const { success } = require('../../utils/embeds');
+module.exports = { data: new SlashCommandBuilder().setName('to-select').setDescription('تحويل بانل التذاكر إلى قائمة اختيار أو أزرار').addStringOption(o=>o.setName('mode').setDescription('النمط').setRequired(true).addChoices({name:'قائمة اختيار',value:'select'},{name:'أزرار',value:'buttons'})).setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild), async execute(interaction){ const mode=interaction.options.getString('mode'); await designer.savePanelData(interaction.guildId,{mode}); return interaction.reply({embeds:[success(mode==='select'?'تم تحويل البانل إلى قائمة اختيار.':'تم تحويل البانل إلى أزرار.')],flags:['Ephemeral']}); } };
