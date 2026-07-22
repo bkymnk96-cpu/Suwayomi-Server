@@ -1,4 +1,38 @@
-const { SlashCommandBuilder } = require('discord.js');
-const db = require('../../database/db');
-const { isStaff } = require('../../utils/ticketAdvanced');
-module.exports = { data: new SlashCommandBuilder().setName('add-user').setDescription('إضافة عضو إلى قناة التذكرة الحالية').addUserOption(o=>o.setName('user').setDescription('العضو').setRequired(true)), async execute(interaction){ const ticket=db.getTicketByChannel(interaction.channelId); const settings=db.getTicketSettings(interaction.guildId); if(!ticket) return interaction.reply({content:'{emoji:circlex} هذه القناة ليست تذكرة.',flags:['Ephemeral']}); if(!isStaff(interaction.member,settings)) return interaction.reply({content:'{emoji:circlex} هذا الأمر لفريق الدعم فقط.',flags:['Ephemeral']}); const member=interaction.options.getMember('user'); await interaction.channel.permissionOverwrites.edit(member.id,{ViewChannel:true,SendMessages:true,ReadMessageHistory:true}); return interaction.reply({content:`{emoji:userplus} تمت إضافة ${member} إلى التذكرة.`}); } };
+const { SlashCommandBuilder } = require("discord.js");
+const keyValueService = require("../../services/keyValueService");
+const { canManageTicket } = require("../../utils/ticketUtils");
+
+module.exports = {
+    adminsOnly: false,
+    data: new SlashCommandBuilder()
+        .setName('add-user')
+        .setDescription('إضافة عضو إلى قناة التذكرة الحالية')
+        .addUserOption(option => 
+            option
+                .setName('user')
+                .setDescription('اختر العضو لإضافته')
+                .setRequired(true)
+        ),
+    
+    /**
+     * @param { import('discord.js').ChatInputCommandInteraction } interaction 
+     */
+    async execute(interaction) {
+        const ticketData = await keyValueService.get('ticketDB', `TICKET-PANEL_${interaction.channel.id}`);
+        if (!ticketData) {
+            return interaction.reply({ content: `> هذه القناة ليست تذكرة`, ephemeral: true });
+        }
+
+        if (!canManageTicket(interaction.member, ticketData)) {
+            return interaction.reply({ content: `{emoji:circlex} لا تمتلك صلاحية إضافة أعضاء إلى هذه التذكرة.`, ephemeral: true });
+        }
+
+        const member = interaction.options.getMember('user');
+        await interaction.channel.permissionOverwrites.edit(member.user.id, {
+            ViewChannel: true,
+            SendMessages: true
+        });
+
+        return interaction.reply({ content: `{emoji:circlecheck} تمت إضافة ${member} إلى التذكرة ${interaction.channel}.` });
+    }
+};
