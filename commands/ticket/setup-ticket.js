@@ -98,6 +98,7 @@ module.exports = {
       welcomeMessage: "مرحباً بك في تذكرتك! سيقوم فريق الدعم بالرد عليك قريباً.",
       welcomeType: "embed",
       askReason: false,
+      panelType: "embed", // نوع الرسالة: embed أو message
     };
 
     const generatePreviewEmbed = () =>
@@ -193,6 +194,7 @@ module.exports = {
                     { label: "إيموجي الزر", value: "buttonEmoji", emoji: "😊" },
                     { label: "رتبة الدعم", value: "supportRole", emoji: "👤" },
                     { label: "فئة القنوات", value: "category", emoji: "📂" },
+                    { label: "نوع الرسالة", value: "panelType", emoji: "📝" },
                   ])
               );
               await componentInteraction.editReply({ components: [row, mainButtons()] });
@@ -493,6 +495,9 @@ module.exports = {
                   const pagRow = createPaginationRow(0, Math.ceil(allCategories.length / 25), "categories");
                   await componentInteraction.editReply({ components: [menu, pagRow] });
                 }
+              } else if (value === "panelType") {
+                settings.panelType = settings.panelType === "embed" ? "message" : "embed";
+                await componentInteraction.editReply({ embeds: [generatePreviewEmbed()], components: [mainButtons()] });
               }
               break;
 
@@ -634,7 +639,17 @@ module.exports = {
     if (settings.buttonEmoji) btn.setEmoji(settings.buttonEmoji);
 
     const finalRow = new ActionRowBuilder().addComponents(btn);
-    await interaction.channel.send({ embeds: [generatePreviewEmbed()], components: [finalRow] });
+
+    if (settings.panelType === "message") {
+      // إرسال رسالة نصية عادية مع الزر
+      await interaction.channel.send({
+        content: settings.description || "اضغط الزر أدناه لفتح تذكرة",
+        components: [finalRow],
+      });
+    } else {
+      // الإرسال الافتراضي بتضمين
+      await interaction.channel.send({ embeds: [generatePreviewEmbed()], components: [finalRow] });
+    }
 
     await keyValueService.set("ticketDB", `Ticket_${interaction.channel.id}_${randomId}`, {
       Support: settings.supportRoleId,
@@ -707,6 +722,7 @@ module.exports = {
           welcomeMessage: settings.welcomeMessage,
           welcomeType: settings.welcomeType,
           askReason: settings.askReason,
+          panelType: settings.panelType,
         };
         await keyValueService.set("ticketPresets", interaction.guild.id, presets);
 
