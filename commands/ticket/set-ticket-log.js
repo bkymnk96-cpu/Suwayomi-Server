@@ -1,4 +1,51 @@
-const { SlashCommandBuilder, PermissionFlagsBits, ChannelType } = require('discord.js');
-const db = require('../../database/db');
-const { success } = require('../../utils/embeds');
-module.exports = { data: new SlashCommandBuilder().setName('set-ticket-log').setDescription('تحديد رومات سجلات ونسخ التذاكر').addChannelOption(o=>o.setName('logs').setDescription('روم سجلات التذاكر').addChannelTypes(ChannelType.GuildText,ChannelType.GuildAnnouncement)).addChannelOption(o=>o.setName('transcripts').setDescription('روم النسخ النصية').addChannelTypes(ChannelType.GuildText,ChannelType.GuildAnnouncement)).setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild), async execute(interaction){ const logs=interaction.options.getChannel('logs'); const trans=interaction.options.getChannel('transcripts'); const current=db.getTicketSettings(interaction.guildId); const panel={...(current.panel_data||{}),transcripts_channel:trans?.id||current.panel_data?.transcripts_channel||null}; await db.updateTicketSettings(interaction.guildId,{log_channel:logs?.id||current.log_channel,panel_data:panel}); return interaction.reply({embeds:[success(`تم تحديث سجلات التذاكر: ${logs||'كما هي'} / النسخ: ${trans||'كما هي'}`)],flags:['Ephemeral']}); } };
+const { SlashCommandBuilder } = require("discord.js");
+const keyValueService = require("../../services/keyValueService");
+
+module.exports = {
+    adminsOnly: true,
+    data: new SlashCommandBuilder()
+        .setName('set-ticket-log')
+        .setDescription('تحديد روم اللوغ')
+        .addStringOption(option =>
+            option
+                .setName('type')
+                .setDescription('اللوغ المطلوب')
+                .setRequired(true)
+                .addChoices(
+                    { name: 'اللوق', value: 'log' },
+                    { name: 'النسخ النصية', value: 'transcripte' }
+                )
+        )
+        .addChannelOption(option =>
+            option
+                .setName('room')
+                .setDescription('اختر الروم')
+                .setRequired(true)
+        ),
+    async execute(interaction) {
+        try {
+            const command = interaction.options.getString('type');
+            const room = interaction.options.getChannel('room');
+
+            if (!command || !room || !room.id) {
+                return interaction.reply({ content: "الروم الذي اخترته غير موجود", ephemeral: true });
+            }
+
+            let key;
+            if (command === 'log') {
+                key = `LogsRoom_${interaction.guild.id}`;
+            } else if (command === 'transcripte') {
+                key = `TransRoom_${interaction.guild.id}`;
+            } else {
+                return interaction.reply({ content: "هناك خطأ", ephemeral: true });
+            }
+
+            await keyValueService.set('ticketDB', key, room.id);
+
+            return interaction.reply({ content: `**تم تحديد الروم <#${room.id}> بنجاح .**` });
+        } catch (error) {
+            console.error("خطأ أثناء تحديد روم لوق التذاكر:", error);
+            return interaction.reply({ content: `حدث خطأ ما، حاول مرة أخرى.`, ephemeral: true });
+        }
+    }
+};
