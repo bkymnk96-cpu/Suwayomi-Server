@@ -11,7 +11,6 @@ const {
   MessageFlags,
   ChannelType,
   PermissionsBitField,
-  AttachmentBuilder,
 } = require("discord.js");
 const keyValueService = require("../../services/keyValueService");
 
@@ -102,9 +101,16 @@ module.exports = {
       panelType: "embed", // "embed" أو "message"
     };
 
-    // دالة تولد إيمبد للمعاينة دائمًا (حتى لو كان panelType message) لتسهيل التحرير
-    const generatePreviewEmbed = () =>
-      new EmbedBuilder()
+    // إعدادات إضافية للرسالة العادية
+    const messageSettings = {
+      content: settings.description, // النص الظاهر
+      imageUrl: settings.embedImage, // رابط الصورة المرفقة
+    };
+
+    // دالة توليد الإيمبد للمعاينة (للنوع embed)
+    const generatePreviewEmbed = () => {
+      if (settings.panelType !== "embed") return null;
+      return new EmbedBuilder()
         .setColor(settings.color)
         .setTitle(settings.title || null)
         .setDescription(settings.description || null)
@@ -112,6 +118,71 @@ module.exports = {
         .setTimestamp()
         .setThumbnail(settings.thumbnail ? interaction.guild.iconURL() : null)
         .setImage(settings.embedImage || null);
+    };
+
+    // دالة بناء خيارات قسم المظهر حسب نوع اللوحة
+    const getAdvancedOptions = () => {
+      if (settings.panelType === "message") {
+        return [
+          { label: "نص الرسالة", value: "content", emoji: "💬" },
+          { label: "رابط الصورة المرفقة", value: "imageUrl", emoji: "🖼️" },
+          {
+            label: `نوع رسالة الترحيب (${settings.welcomeType === "embed" ? "تضمين" : "نصية"})`,
+            value: "welcomeType",
+            emoji: "💬",
+          },
+          {
+            label: `سؤال السبب ${settings.askReason ? "{emoji:circlecheck}" : "{emoji:circlex}"}`,
+            value: "askReason",
+            emoji: "ℹ️",
+          },
+          { label: "رسالة الترحيب", value: "welcomeMessage", emoji: "📧" },
+        ];
+      } else {
+        return [
+          { label: "عنوان البانر", value: "title", emoji: "🔖" },
+          { label: "وصف البانر", value: "description", emoji: "💬" },
+          { label: "لون التضمين", value: "color", emoji: "🖼️" },
+          { label: "صورة البانر", value: "embedImage", emoji: "🖼️" },
+          {
+            label: `أيقونة السيرفر ${settings.thumbnail ? "{emoji:circlecheck}" : "{emoji:circlex}"}`,
+            value: "thumbnail",
+            emoji: "🖼️",
+          },
+          {
+            label: `نوع رسالة الترحيب (${settings.welcomeType === "embed" ? "تضمين" : "نصية"})`,
+            value: "welcomeType",
+            emoji: "💬",
+          },
+          {
+            label: `سؤال السبب ${settings.askReason ? "{emoji:circlecheck}" : "{emoji:circlex}"}`,
+            value: "askReason",
+            emoji: "ℹ️",
+          },
+          { label: "رسالة الترحيب", value: "welcomeMessage", emoji: "📧" },
+        ];
+      }
+    };
+
+    // دالة بناء الرد المناسب حسب النوع
+    const buildReplyOptions = (extraComponents = []) => {
+      const embed = generatePreviewEmbed();
+      const comps = extraComponents.length > 0 ? extraComponents : [mainButtons()];
+      const options = { components: comps };
+      if (embed) {
+        options.embeds = [embed];
+        options.content = undefined;
+      } else {
+        // رسالة عادية: عرض النص ومعلومة عن الصورة إن وجدت
+        let content = messageSettings.content || "اضغط الزر أدناه لفتح تذكرة";
+        if (messageSettings.imageUrl) {
+          content += `\n🖼️ صورة مرفقة: ${messageSettings.imageUrl}`;
+        }
+        options.content = content;
+        options.embeds = [];
+      }
+      return options;
+    };
 
     const mainButtons = () =>
       new ActionRowBuilder().addComponents(
@@ -121,12 +192,21 @@ module.exports = {
         new ButtonBuilder().setCustomId("cancel_setup").setLabel("إلغاء").setEmoji(require('../../utils/emojis').circlex.toString()).setStyle(ButtonStyle.Danger)
       );
 
-    // الرد المبدئي: دائما إيمبد للمعاينة
-    await interaction.reply({
-      embeds: [generatePreviewEmbed().setFooter({ text: "{emoji:settings} معالج إعداد التذاكر | معاينة مباشرة" })],
-      components: [mainButtons()],
-      fetchReply: true,
-    });
+    // الرد المبدئي
+    const initialEmbed = generatePreviewEmbed();
+    if (initialEmbed) {
+      await interaction.reply({
+        embeds: [initialEmbed.setFooter({ text: "{emoji:settings} معالج إعداد التذاكر | معاينة مباشرة" })],
+        components: [mainButtons()],
+        fetchReply: true,
+      });
+    } else {
+      await interaction.reply({
+        content: messageSettings.content || "اضغط الزر أدناه لفتح تذكرة",
+        components: [mainButtons()],
+        fetchReply: true,
+      });
+    }
 
     const paginationCache = {
       roles: { items: [], page: 0, filtered: null },
@@ -141,16 +221,6 @@ module.exports = {
       return new ActionRowBuilder().addComponents(
         new StringSelectMenuBuilder().setCustomId(customId).setPlaceholder(placeholder).addOptions(options)
       );
-    }
-
-    // دالة مساعدة لتحديث الرد بعد تغيير الإعدادات
-    async function updateReplyWithPreview(interactionToEdit, extraComponents = []) {
-      const comps = extraComponents.length > 0 ? extraComponents : [mainButtons()];
-      await interactionToEdit.editReply({
-        embeds: [generatePreviewEmbed()],
-        components: comps,
-        content: null,
-      });
     }
 
     // حلقة التفاعل الرئيسية
@@ -197,23 +267,18 @@ module.exports = {
 
             case "edit_basics": {
               await componentInteraction.deferUpdate();
-              const basicOptions = [
-                { label: "اسم الزر", value: "buttonName", emoji: "⚙️" },
-                { label: "لون الزر", value: "buttonStyle", emoji: "🖼️" },
-                { label: "إيموجي الزر", value: "buttonEmoji", emoji: "😊" },
-                { label: "رتبة الدعم", value: "supportRole", emoji: "👤" },
-                { label: "فئة القنوات", value: "category", emoji: "📂" },
-                {
-                  label: `نوع الرسالة (${settings.panelType === "embed" ? "تضمين" : "نصية"})`,
-                  value: "panelType",
-                  emoji: "📝",
-                },
-              ];
               const row = new ActionRowBuilder().addComponents(
                 new StringSelectMenuBuilder()
                   .setCustomId("basic_select")
                   .setPlaceholder("اختر العنصر لتعديله")
-                  .addOptions(basicOptions)
+                  .addOptions([
+                    { label: "اسم الزر", value: "buttonName", emoji: "⚙️" },
+                    { label: "لون الزر", value: "buttonStyle", emoji: "🖼️" },
+                    { label: "إيموجي الزر", value: "buttonEmoji", emoji: "😊" },
+                    { label: "رتبة الدعم", value: "supportRole", emoji: "👤" },
+                    { label: "فئة القنوات", value: "category", emoji: "📂" },
+                    { label: `نوع الرسالة (${settings.panelType === "embed" ? "تضمين" : "نصية"})`, value: "panelType", emoji: "📝" },
+                  ])
               );
               await componentInteraction.editReply({ components: [row, mainButtons()] });
               continue;
@@ -221,54 +286,11 @@ module.exports = {
 
             case "edit_advanced": {
               await componentInteraction.deferUpdate();
-              let advOptions;
-              if (settings.panelType === "embed") {
-                advOptions = [
-                  { label: "عنوان البانر", value: "title", emoji: "🔖" },
-                  { label: "وصف البانر", value: "description", emoji: "💬" },
-                  { label: "لون التضمين", value: "color", emoji: "🖼️" },
-                  { label: "صورة البانر", value: "embedImage", emoji: "🖼️" },
-                  {
-                    label: `أيقونة السيرفر ${settings.thumbnail ? "{emoji:circlecheck}" : "{emoji:circlex}"}`,
-                    value: "thumbnail",
-                    emoji: "🖼️",
-                  },
-                  {
-                    label: `نوع رسالة الترحيب (${settings.welcomeType === "embed" ? "تضمين" : "نصية"})`,
-                    value: "welcomeType",
-                    emoji: "💬",
-                  },
-                  {
-                    label: `سؤال السبب ${settings.askReason ? "{emoji:circlecheck}" : "{emoji:circlex}"}`,
-                    value: "askReason",
-                    emoji: "ℹ️",
-                  },
-                  { label: "رسالة الترحيب", value: "welcomeMessage", emoji: "📧" },
-                ];
-              } else {
-                // وضع message
-                advOptions = [
-                  { label: "نص الرسالة", value: "description", emoji: "💬" },
-                  { label: "صورة مرفقة", value: "embedImage", emoji: "🖼️" },
-                  {
-                    label: `نوع رسالة الترحيب (${settings.welcomeType === "embed" ? "تضمين" : "نصية"})`,
-                    value: "welcomeType",
-                    emoji: "💬",
-                  },
-                  {
-                    label: `سؤال السبب ${settings.askReason ? "{emoji:circlecheck}" : "{emoji:circlex}"}`,
-                    value: "askReason",
-                    emoji: "ℹ️",
-                  },
-                  { label: "رسالة الترحيب", value: "welcomeMessage", emoji: "📧" },
-                ];
-              }
-
               const row = new ActionRowBuilder().addComponents(
                 new StringSelectMenuBuilder()
                   .setCustomId("advanced_select")
                   .setPlaceholder("اختر العنصر لتعديله")
-                  .addOptions(advOptions)
+                  .addOptions(getAdvancedOptions())
               );
               await componentInteraction.editReply({ components: [row, mainButtons()] });
               continue;
@@ -282,7 +304,7 @@ module.exports = {
                   paginationCache.roles.filtered = null;
                   paginationCache.categories.page = 0;
                   paginationCache.categories.filtered = null;
-                  await updateReplyWithPreview(componentInteraction);
+                  await componentInteraction.editReply(buildReplyOptions());
                   continue;
                 }
 
@@ -328,7 +350,7 @@ module.exports = {
           const value = componentInteraction.values[0];
           const customId = componentInteraction.customId;
 
-          // ---- قائمة اختيار قالب الترحيب أو تخصيص يدوي ----
+          // قالب الترحيب
           if (customId === "select_welcome") {
             if (value === "__custom__") {
               const modal = new ModalBuilder()
@@ -351,13 +373,13 @@ module.exports = {
             } else {
               settings.welcomeMessage = `[template:${value}]`;
               await componentInteraction.deferUpdate();
-              await updateReplyWithPreview(componentInteraction);
+              await componentInteraction.editReply(buildReplyOptions());
               continue;
             }
           }
 
-          // خيارات تحتاج Modal
-          const needsModal = ["buttonName", "buttonEmoji", "title", "description", "embedImage"];
+          // خيارات تحتاج Modal (نفس القائمة السابقة مع إضافة content و imageUrl)
+          const needsModal = ["buttonName", "buttonEmoji", "title", "description", "embedImage", "content", "imageUrl"];
           if (needsModal.includes(value)) {
             let modal;
             const currentValue = {
@@ -366,6 +388,8 @@ module.exports = {
               title: settings.title,
               description: settings.description,
               embedImage: settings.embedImage,
+              content: messageSettings.content,
+              imageUrl: messageSettings.imageUrl,
             }[value];
 
             switch (value) {
@@ -403,18 +427,40 @@ module.exports = {
                 ));
                 break;
               case "description":
-                modal = new ModalBuilder().setCustomId("modal_description").setTitle("تغيير النص");
+                modal = new ModalBuilder().setCustomId("modal_description").setTitle("تغيير الوصف");
                 modal.addComponents(new ActionRowBuilder().addComponents(
                   new TextInputBuilder()
                     .setCustomId("input")
-                    .setLabel("نص الرسالة")
+                    .setLabel("وصف البانر (اتركه فارغاً للإخفاء)")
                     .setStyle(TextInputStyle.Paragraph)
                     .setRequired(false)
                     .setValue(currentValue)
                 ));
                 break;
               case "embedImage":
-                modal = new ModalBuilder().setCustomId("modal_embedImage").setTitle("رابط الصورة");
+                modal = new ModalBuilder().setCustomId("modal_embedImage").setTitle("رابط صورة البانر");
+                modal.addComponents(new ActionRowBuilder().addComponents(
+                  new TextInputBuilder()
+                    .setCustomId("input")
+                    .setLabel("رابط الصورة (اتركه فارغاً للحذف)")
+                    .setStyle(TextInputStyle.Short)
+                    .setRequired(false)
+                    .setValue(currentValue)
+                ));
+                break;
+              case "content":
+                modal = new ModalBuilder().setCustomId("modal_content").setTitle("نص الرسالة");
+                modal.addComponents(new ActionRowBuilder().addComponents(
+                  new TextInputBuilder()
+                    .setCustomId("input")
+                    .setLabel("النص الذي سيظهر في الرسالة العادية")
+                    .setStyle(TextInputStyle.Paragraph)
+                    .setRequired(false)
+                    .setValue(currentValue)
+                ));
+                break;
+              case "imageUrl":
+                modal = new ModalBuilder().setCustomId("modal_imageUrl").setTitle("رابط الصورة المرفقة");
                 modal.addComponents(new ActionRowBuilder().addComponents(
                   new TextInputBuilder()
                     .setCustomId("input")
@@ -435,8 +481,10 @@ module.exports = {
                 case "modal_title": settings.title = input; break;
                 case "modal_description": settings.description = input; break;
                 case "modal_embedImage": settings.embedImage = input; break;
+                case "modal_content": messageSettings.content = input; settings.description = input; break;
+                case "modal_imageUrl": messageSettings.imageUrl = input; settings.embedImage = input; break;
               }
-              await updateReplyWithPreview(modalSubmit);
+              await modalSubmit.update(buildReplyOptions());
             } catch (error) {
               if (error.code === "INTERACTION_NOT_REPLIED") {
                 await interaction.editReply({ components: [mainButtons()] });
@@ -445,17 +493,13 @@ module.exports = {
             continue;
           }
 
-          // معالجة اختيار welcomeMessage
+          // اختيار welcomeMessage
           if (value === "welcomeMessage") {
             const templateNames = Object.keys(welcomeTemplates);
             const options = [];
             if (templateNames.length > 0) {
               templateNames.forEach(name => {
-                options.push({
-                  label: name,
-                  value: name,
-                  emoji: "📁",
-                });
+                options.push({ label: name, value: name, emoji: "📁" });
               });
             }
             options.push({
@@ -475,7 +519,6 @@ module.exports = {
             continue;
           }
 
-          // خيارات مباشرة
           await componentInteraction.deferUpdate();
 
           switch (customId) {
@@ -526,52 +569,66 @@ module.exports = {
                 }
               } else if (value === "panelType") {
                 settings.panelType = settings.panelType === "embed" ? "message" : "embed";
-                await updateReplyWithPreview(componentInteraction);
+                // مزامنة القيم بين الوضعين
+                if (settings.panelType === "message") {
+                  messageSettings.content = settings.description;
+                  messageSettings.imageUrl = settings.embedImage;
+                } else {
+                  settings.description = messageSettings.content;
+                  settings.embedImage = messageSettings.imageUrl;
+                }
+                await componentInteraction.editReply(buildReplyOptions());
               }
               break;
 
             case "advanced_select":
-              if (value === "thumbnail") settings.thumbnail = !settings.thumbnail;
-              else if (value === "welcomeType") settings.welcomeType = settings.welcomeType === "embed" ? "message" : "embed";
-              else if (value === "askReason") settings.askReason = !settings.askReason;
-              else if (value === "color") {
-                const row = new ActionRowBuilder().addComponents(
-                  new StringSelectMenuBuilder()
-                    .setCustomId("select_color")
-                    .setPlaceholder("اختر لون التضمين")
-                    .addOptions(embedColors.map(c => ({ label: c.name, value: c.value })))
-                );
-                await componentInteraction.editReply({ components: [row, mainButtons()] });
-                continue;
+              if (settings.panelType === "message") {
+                if (value === "welcomeType") settings.welcomeType = settings.welcomeType === "embed" ? "message" : "embed";
+                else if (value === "askReason") settings.askReason = !settings.askReason;
+                // content و imageUrl عولجت مسبقاً في needsModal
+                await componentInteraction.editReply(buildReplyOptions());
+              } else {
+                if (value === "thumbnail") settings.thumbnail = !settings.thumbnail;
+                else if (value === "welcomeType") settings.welcomeType = settings.welcomeType === "embed" ? "message" : "embed";
+                else if (value === "askReason") settings.askReason = !settings.askReason;
+                else if (value === "color") {
+                  const row = new ActionRowBuilder().addComponents(
+                    new StringSelectMenuBuilder()
+                      .setCustomId("select_color")
+                      .setPlaceholder("اختر لون التضمين")
+                      .addOptions(embedColors.map(c => ({ label: c.name, value: c.value })))
+                  );
+                  await componentInteraction.editReply({ components: [row, mainButtons()] });
+                  continue;
+                }
+                await componentInteraction.editReply(buildReplyOptions());
               }
-              // باقي التعديلات (title, description, embedImage) تُعالج عبر modal سابقاً
-              await updateReplyWithPreview(componentInteraction);
               break;
 
             case "select_supportRole":
               settings.supportRoleId = value;
               paginationCache.roles.filtered = null;
-              await updateReplyWithPreview(componentInteraction);
+              await componentInteraction.editReply(buildReplyOptions());
               break;
 
             case "select_category":
               settings.categoryId = value;
               paginationCache.categories.filtered = null;
-              await updateReplyWithPreview(componentInteraction);
+              await componentInteraction.editReply(buildReplyOptions());
               break;
 
             case "select_buttonStyle":
               settings.buttonStyle = value;
-              await updateReplyWithPreview(componentInteraction);
+              await componentInteraction.editReply(buildReplyOptions());
               break;
 
             case "select_color":
               settings.color = value;
-              await updateReplyWithPreview(componentInteraction);
+              await componentInteraction.editReply(buildReplyOptions());
               break;
 
             default:
-              await updateReplyWithPreview(componentInteraction);
+              await componentInteraction.editReply(buildReplyOptions());
           }
           continue;
         }
@@ -581,14 +638,10 @@ module.exports = {
           const input = componentInteraction.fields.getTextInputValue("input");
           settings.welcomeMessage = input;
           try {
-            await updateReplyWithPreview(componentInteraction);
+            await componentInteraction.update(buildReplyOptions());
           } catch (e) {
             if (e.code === "INTERACTION_NOT_REPLIED") {
-              await componentInteraction.reply({
-                embeds: [generatePreviewEmbed()],
-                components: [mainButtons()],
-                ephemeral: true,
-              });
+              await componentInteraction.reply({ ...buildReplyOptions(), ephemeral: true });
             }
           }
           continue;
@@ -657,7 +710,7 @@ module.exports = {
       }
     }
 
-    // إرسال البانر النهائي
+    // إرسال اللوحة النهائية
     const randomId = `ticket_${Math.random().toString(36).substr(2, 9)}`;
     const btn = new ButtonBuilder()
       .setCustomId(randomId)
@@ -668,21 +721,29 @@ module.exports = {
     const finalRow = new ActionRowBuilder().addComponents(btn);
 
     if (settings.panelType === "message") {
-      const msgOptions = {
-        content: settings.description || "اضغط الزر أدناه لفتح تذكرة",
+      const messagePayload = {
+        content: messageSettings.content || "اضغط الزر أدناه لفتح تذكرة",
         components: [finalRow],
       };
-      if (settings.embedImage) {
+      if (messageSettings.imageUrl) {
+        // تحميل الصورة من الرابط وإرسالها كمرفق
         try {
-          const attachment = new AttachmentBuilder(settings.embedImage, { name: "image.png" });
-          msgOptions.files = [attachment];
-        } catch {
-          // إذا فشل تحميل الصورة، تجاهل
+          const fetch = (await import("node-fetch")).default;
+          const response = await fetch(messageSettings.imageUrl);
+          if (response.ok) {
+            const buffer = Buffer.from(await response.arrayBuffer());
+            messagePayload.files = [{ attachment: buffer, name: "image.png" }];
+          }
+        } catch (err) {
+          console.error("فشل تحميل الصورة المرفقة:", err);
         }
       }
-      await interaction.channel.send(msgOptions);
+      await interaction.channel.send(messagePayload);
     } else {
-      await interaction.channel.send({ embeds: [generatePreviewEmbed()], components: [finalRow] });
+      await interaction.channel.send({
+        embeds: [generatePreviewEmbed()],
+        components: [finalRow],
+      });
     }
 
     await keyValueService.set("ticketDB", `Ticket_${interaction.channel.id}_${randomId}`, {
@@ -693,7 +754,7 @@ module.exports = {
       Ask: settings.askReason,
     });
 
-    // ---- عرض أزرار الحفظ والإنهاء ----
+    // أزرار الحفظ والإنهاء
     const saveRow = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
         .setCustomId("save_preset")
@@ -757,6 +818,8 @@ module.exports = {
           welcomeType: settings.welcomeType,
           askReason: settings.askReason,
           panelType: settings.panelType,
+          content: messageSettings.content,
+          imageUrl: messageSettings.imageUrl,
         };
         await keyValueService.set("ticketPresets", interaction.guild.id, presets);
 
