@@ -86,7 +86,7 @@
                 </li>
                 <li>
                     <a href="/dashboard/<%= guild.id %>/aliases" class="nav-link <%= activeTab === 'aliases' ? 'active' : '' %>">
-                        <i class="fa-solid fa-terminal nav-icon"></i>
+                        <i class="fa-solid fa-link nav-icon"></i>
                         <span class="sidebar-text">أوامري</span>
                     </a>
                 </li>
@@ -94,12 +94,6 @@
                     <a href="/dashboard/<%= guild.id %>/logs" class="nav-link <%= activeTab === 'logs' ? 'active' : '' %>">
                         <i class="fa-solid fa-clipboard-list nav-icon"></i>
                         <span class="sidebar-text">سجلات الأحداث</span>
-                    </a>
-                </li>
-                <li>
-                    <a href="/dashboard/<%= guild.id %>/admin-points" class="nav-link <%= activeTab === 'admin-points' ? 'active' : '' %>">
-                        <i class="fa-solid fa-crown nav-icon"></i>
-                        <span class="sidebar-text">نقاط الإدارة</span>
                     </a>
                 </li>
                 <li>
@@ -138,6 +132,12 @@
                     <a href="/dashboard/<%= guild.id %>/captcha" class="nav-link <%= activeTab === 'captcha' ? 'active' : '' %>">
                         <i class="fa-solid fa-shield-cat nav-icon"></i>
                         <span class="sidebar-text">التحقق البشري</span>
+                    </a>
+                </li>
+                            <li>
+                    <a href="/dashboard/<%= guild.id %>/admin-system" class="nav-link <%= activeTab === 'admin-system' ? 'active' : '' %>">
+                        <i class="fa-solid fa-crown nav-icon"></i>
+                        <span class="sidebar-text">نظام الإدارة</span>
                     </a>
                 </li>
             </ul>
