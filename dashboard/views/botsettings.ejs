@@ -73,19 +73,19 @@
             <div class="form-group">
                 <label for="emoji_color">ثيم الإيموجيات</label>
                 <select id="emoji_color" name="emoji_color" class="glass-input" onchange="updateEmojiPreview(this.value)">
-                    <option value="blue"   <%= settings.emoji_color === 'blue'   ? 'selected' : '' %>>🔵 الأزرق (افتراضي)</option>
+                    <option value="blue"   <%= settings.emoji_color === 'blue'   ? 'selected' : '' %>>🔵 الأزرق</option>
                     <option value="red"    <%= settings.emoji_color === 'red'    ? 'selected' : '' %>>🔴 الأحمر بريميوم</option>
                     <option value="green"  <%= settings.emoji_color === 'green'  ? 'selected' : '' %>>🟢 الأخضر بريميوم</option>
                     <option value="purple" <%= settings.emoji_color === 'purple' ? 'selected' : '' %>>🟣 البنفسجي بريميوم</option>
-                    <option value="gold"   <%= settings.emoji_color === 'gold'   ? 'selected' : '' %>>🟡 الذهبي الملكي</option>
+                    <option value="gold"   <%= settings.emoji_color === 'gold'   ? 'selected' : '' %>>🟡 الذهبي الملكي (افتراضي)</option>
                     <option value="pink"   <%= settings.emoji_color === 'pink'   ? 'selected' : '' %>>🩷 الوردي الفاخر</option>
                 </select>
                 <div class="emoji-preview-row mt-1">
                     <span class="text-muted" style="font-size:0.8rem;">معاينة:</span>
-                    <img id="prev_check"  src="/assets/emojis/<%= settings.emoji_color || 'blue' %>/circlecheck.png"  style="width:28px;height:28px;">
-                    <img id="prev_x"      src="/assets/emojis/<%= settings.emoji_color || 'blue' %>/circlex.png"      style="width:28px;height:28px;">
-                    <img id="prev_shield" src="/assets/emojis/<%= settings.emoji_color || 'blue' %>/shieldcheck.png"  style="width:28px;height:28px;">
-                    <img id="prev_lock"   src="/assets/emojis/<%= settings.emoji_color || 'blue' %>/lock.png"         style="width:28px;height:28px;">
+                    <img id="prev_check"  src="/assets/emojis/<%= settings.emoji_color || 'gold' %>/circlecheck.png"  style="width:28px;height:28px;">
+                    <img id="prev_x"      src="/assets/emojis/<%= settings.emoji_color || 'gold' %>/circlex.png"      style="width:28px;height:28px;">
+                    <img id="prev_shield" src="/assets/emojis/<%= settings.emoji_color || 'gold' %>/shieldcheck.png"  style="width:28px;height:28px;">
+                    <img id="prev_lock"   src="/assets/emojis/<%= settings.emoji_color || 'gold' %>/lock.png"         style="width:28px;height:28px;">
                 </div>
             </div>
         </div>
@@ -163,7 +163,7 @@
     gap: 8px;
 }
 .bot-tag {
-    background: #5865F2;
+    background: #D4AF37;
     color: #fff;
     font-size: 0.6rem;
     font-weight: 700;

@@ -132,7 +132,7 @@ async function createRankCard(user, textXp, textLevel, voiceTime, voiceLevel, me
     ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
     const textXpStr = `${Math.floor(textXpInLvl)} / ${Math.floor(textNeeded)} XP`;
     ctx.fillText(textXpStr, 740 - ctx.measureText(textXpStr).width, 150);
-    drawProgressBar(ctx, 260, 160, 480, 20, textProgress, '#5865F2', '#4752C4');
+    drawProgressBar(ctx, 260, 160, 480, 20, textProgress, '#D4AF37', '#B8860B');
 
     ctx.font = '22px "IBMPlexSansArabic", "CustomFont", sans-serif';
     ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
@@ -145,7 +145,7 @@ async function createRankCard(user, textXp, textLevel, voiceTime, voiceLevel, me
     ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
     const voiceXpStr = `${Math.floor(voiceTimeInLvl)} / ${Math.floor(voiceNeeded)} XP`;
     ctx.fillText(voiceXpStr, 740 - ctx.measureText(voiceXpStr).width, 220);
-    drawProgressBar(ctx, 260, 230, 480, 20, voiceProgress, '#5865F2', '#4752C4');
+    drawProgressBar(ctx, 260, 230, 480, 20, voiceProgress, '#D4AF37', '#B8860B');
 
     return canvas.toBuffer();
 }

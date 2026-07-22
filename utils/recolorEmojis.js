@@ -47,7 +47,7 @@ function hslToRgb(h, s, l) {
 
 async function recolorEmojis() {
   const settings = db.getBotSettings();
-  const color = settings.emoji_color || 'blue';
+  const color = settings.emoji_color || 'gold';
   
   const originalDir = path.join(__dirname, '..', 'assets', 'emojis');
   const targetDir = path.join(originalDir, color);

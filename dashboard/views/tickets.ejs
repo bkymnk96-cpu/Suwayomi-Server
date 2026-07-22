@@ -139,7 +139,7 @@ try { pData = JSON.parse(settings.panel_data || '{}'); } catch(e) {}
                         </div>
                         <div class="form-group">
                             <label>اللون الجانبي</label>
-                            <input type="color" id="color" name="color" class="glass-input" value="<%= pData.color || '#5865F2' %>" style="height: 40px; padding: 4px; cursor: pointer;">
+                            <input type="color" id="color" name="color" class="glass-input" value="<%= pData.color || '#D4AF37' %>" style="height: 40px; padding: 4px; cursor: pointer;">
                         </div>
                     </div>
                     <div class="form-group">
@@ -304,7 +304,7 @@ try { pData = JSON.parse(settings.panel_data || '{}'); } catch(e) {}
                         <div class="grid-form-2">
                             <div class="form-group">
                                 <label>اللون</label>
-                                <input type="color" id="ticket_embed_color" class="glass-input" value="<%= pData.ticket_message_style?.embed?.color || '#5865F2' %>" style="height:40px; padding:4px;">
+                                <input type="color" id="ticket_embed_color" class="glass-input" value="<%= pData.ticket_message_style?.embed?.color || '#D4AF37' %>" style="height:40px; padding:4px;">
                             </div>
                             <div class="form-group">
                                 <label>رابط الصورة المصغرة</label>
@@ -379,7 +379,7 @@ try { pData = JSON.parse(settings.panel_data || '{}'); } catch(e) {}
                 <div class="section-title"><i class="fa-solid fa-eye"></i> معاينة لوحة فتح التذاكر</div>
                 
                 <div class="discord-preview-container" style="background:#0c0c0c; border:1px solid var(--border); border-radius:var(--r-md); padding:16px;">
-                    <div class="discord-embed" id="preview_embed" style="background-color:#141414; max-width:100%; border-radius:var(--r-sm); border:1px solid var(--border); border-right:4px solid #5865F2; border-left:none; padding:16px;">
+                    <div class="discord-embed" id="preview_embed" style="background-color:#141414; max-width:100%; border-radius:var(--r-sm); border:1px solid var(--border); border-right:4px solid #D4AF37; border-left:none; padding:16px;">
                         <div class="embed-content-wrapper" style="display:flex; justify-content:space-between; gap:16px;">
                             <div class="flex-grow-1" style="min-width:0;">
                                 <div class="embed-title" id="preview_title" style="font-weight:700; font-size:0.95rem; color:#fff; margin-bottom:6px;"></div>
@@ -391,7 +391,7 @@ try { pData = JSON.parse(settings.panel_data || '{}'); } catch(e) {}
                     </div>
 
                     <div class="mt-2">
-                        <div id="preview_button" class="discord-button" style="border-radius:var(--r-sm); font-size:0.8rem; padding: 6px 12px; cursor:default; display:none; background:#5865F2; color:#fff;">
+                        <div id="preview_button" class="discord-button" style="border-radius:var(--r-sm); font-size:0.8rem; padding: 6px 12px; cursor:default; display:none; background:#D4AF37; color:#fff;">
                             <span id="preview_btn_emoji" style="margin-left:4px;"></span>
                             <span id="preview_btn_label"></span>
                         </div>
@@ -411,7 +411,7 @@ try { pData = JSON.parse(settings.panel_data || '{}'); } catch(e) {}
                 <div class="section-title"><i class="fa-solid fa-ticket"></i> معاينة الترحيب داخل التذكرة</div>
                 
                 <div class="discord-preview-container" style="background:#0c0c0c; border:1px solid var(--border); border-radius:var(--r-md); padding:16px;">
-                    <div class="discord-embed" style="background-color:#141414; max-width:100%; border-radius:var(--r-sm); border:1px solid var(--border); border-right:4px solid #5865F2; border-left:none; padding:16px;">
+                    <div class="discord-embed" style="background-color:#141414; max-width:100%; border-radius:var(--r-sm); border:1px solid var(--border); border-right:4px solid #D4AF37; border-left:none; padding:16px;">
                         <div class="embed-description" style="display:block; font-size:0.85rem; color:#dbdee1; line-height:1.5;">
                             <span id="ticket_preview_text">مرحباً بك في تذكرتك</span>
                         </div>
@@ -533,7 +533,7 @@ try { pData = JSON.parse(settings.panel_data || '{}'); } catch(e) {}
                 embed: {
                     title: document.getElementById("ticket_embed_title")?.value || "",
                     description: document.getElementById("ticket_embed_description")?.value || "",
-                    color: document.getElementById("ticket_embed_color")?.value || "#5865F2",
+                    color: document.getElementById("ticket_embed_color")?.value || "#D4AF37",
                     thumbnail: document.getElementById("ticket_embed_thumbnail")?.value || "",
                     image: document.getElementById("ticket_embed_image")?.value || "",
                     footer: document.getElementById("ticket_embed_footer")?.value || "",

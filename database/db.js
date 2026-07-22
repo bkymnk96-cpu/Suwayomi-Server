@@ -1115,7 +1115,7 @@ getTicketWarnings(guildId, userId) {
   getBotSettings() {
     let row = cache.bot_settings.get(1);
     if (!row) {
-      row = { id: 1, status: 'online', activity_type: 'PLAYING', activity_name: 'E-246 System' };
+      row = { id: 1, status: 'online', activity_type: 'Playing', activity_name: 'ZEUS System', emoji_color: 'gold' };
       cache.bot_settings.set(1, row);
       safeCollection('bot_settings').insertOne(row).catch(() => null);
     }

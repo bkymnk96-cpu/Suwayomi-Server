@@ -6,7 +6,7 @@ module.exports = async function logTicket(
     settings,
     title,
     description,
-    color = "#5865F2"
+    color = "#D4AF37"
 ) {
 
     if (!settings.log_channel) return;

@@ -41,7 +41,7 @@ async function emojiSetup(client) {
     await recolorEmojis().catch(() => null);
 
     const settings = db.getBotSettings();
-    const color = settings.emoji_color || 'blue';
+    const color = settings.emoji_color || 'gold';
     const emojisDir = path.join(__dirname, '..', 'assets', 'emojis', color);
     const emojisJsonPath = path.join(__dirname, '..', 'utils', 'emojis.json');
 

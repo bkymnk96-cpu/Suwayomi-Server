@@ -464,7 +464,7 @@ module.exports = {
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
         for(let i = 0; i < 5; i++) {
-            ctx.strokeStyle = '#5865F2';
+            ctx.strokeStyle = '#D4AF37';
             ctx.beginPath();
             ctx.moveTo(Math.random() * canvas.width, Math.random() * canvas.height);
             ctx.lineTo(Math.random() * canvas.width, Math.random() * canvas.height);
@@ -1108,7 +1108,7 @@ if(ticketStyle.type === "embed") {
 .replaceAll("{ticket}", channel.name);
 
     const embed = new EmbedBuilder()
-        .setColor(ticketStyle.embed?.color || "#5865F2")
+        .setColor(ticketStyle.embed?.color || "#D4AF37")
         .setTitle(ticketStyle.embed?.title || "تذكرة جديدة")
         .setDescription(Description1);
         

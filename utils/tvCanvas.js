@@ -27,7 +27,7 @@ async function generateTVControlPanel() {
   ctx.fillText('لوحة تحكم الغرفة الصوتية', canvas.width / 2, 70);
   
   
-  ctx.fillStyle = '#5865F2';
+  ctx.fillStyle = '#D4AF37';
   ctx.fillRect(canvas.width / 2 - 100, 90, 200, 4);
 
   const icons = [
@@ -65,7 +65,7 @@ async function generateTVControlPanel() {
   }
 
   
-  ctx.fillStyle = '#5865F2';
+  ctx.fillStyle = '#D4AF37';
   ctx.fillRect(0, canvas.height - 15, canvas.width, 15);
 
   return canvas.encode('png');

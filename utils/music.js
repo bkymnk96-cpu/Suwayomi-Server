@@ -43,7 +43,7 @@ function setupMusic(client) {
         nodes: nodes,
         client: {
             id: process.env.CLIENT_ID,
-            username: 'E-246 Music'
+            username: 'ZEUS Music'
         },
         sendToShard: (guildId, payload) => {
             const guild = client.guilds.cache.get(guildId);

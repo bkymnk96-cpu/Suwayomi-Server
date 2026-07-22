@@ -31,7 +31,7 @@
                 <div class="grid-form-2">
                     <div class="form-group">
                         <label>لون الإمبيد</label>
-                        <input type="color" name="color" id="color" class="glass-input" style="height: 40px; padding: 4px; cursor: pointer;" value="<%= settings.panel_data.color || '#5865F2' %>">
+                        <input type="color" name="color" id="color" class="glass-input" style="height: 40px; padding: 4px; cursor: pointer;" value="<%= settings.panel_data.color || '#D4AF37' %>">
                     </div>
                     <div class="form-group">
                         <label>رابط الصورة المصغرة (Thumbnail)</label>
@@ -99,7 +99,7 @@
                 <div class="section-title"><i class="fa-solid fa-eye"></i> معاينة مباشرة</div>
 
                 <div class="discord-preview-container" style="background:#0c0c0c; border: 1px solid var(--border); border-radius: var(--r-md); padding:16px;">
-                    <div class="discord-embed" style="background-color:#141414; max-width:100%; border-radius:var(--r-sm); border:1px solid var(--border); border-right:4px solid #5865F2; border-left:none; padding:16px;">
+                    <div class="discord-embed" style="background-color:#141414; max-width:100%; border-radius:var(--r-sm); border:1px solid var(--border); border-right:4px solid #D4AF37; border-left:none; padding:16px;">
                         <div class="d-flex gap-2">
                             <img src="<%= client.user.displayAvatarURL() %>" style="width:32px; height:32px; border-radius:50%; border:1px solid var(--border);">
                             <div class="flex-grow-1" style="min-width:0;">
@@ -107,7 +107,7 @@
                                     <span style="color:#fff; font-weight:600; font-size:0.85rem;"><%= client.user.username %></span>
                                     <span class="bot-tag-preview">BOT</span>
                                 </div>
-                                <div id="preview-embed" style="border-right:4px solid #5865F2; border-left:none; background:#0a0a0a; padding:12px; border-radius:var(--r-sm); border:1px solid var(--border); display:flex; gap:16px; justify-content:space-between;">
+                                <div id="preview-embed" style="border-right:4px solid #D4AF37; border-left:none; background:#0a0a0a; padding:12px; border-radius:var(--r-sm); border:1px solid var(--border); display:flex; gap:16px; justify-content:space-between;">
                                     <div class="flex-grow-1" style="min-width:0;">
                                         <div id="preview-title" style="color:#fff; font-weight:700; font-size:0.95rem; margin-bottom:6px;"></div>
                                         <div id="preview-desc" style="color:var(--text-2); font-size:0.85rem; line-height:1.5; white-space:pre-wrap;"></div>
@@ -143,7 +143,7 @@
     border-color: var(--border-hover);
 }
 .bot-tag-preview {
-    background: #5865F2;
+    background: #D4AF37;
     color: #fff;
     font-size: 0.6rem;
     padding: 1px 4px;

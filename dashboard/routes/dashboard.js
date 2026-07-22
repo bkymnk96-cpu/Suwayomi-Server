@@ -6,11 +6,12 @@ const os = require('os');
 const fs = require('fs');
 const path = require('path');
 const { resolveYouTubeChannelId, isValidYouTubeChannelId } = require('../../utils/youtubeResolve');
+const emojiManager = require('../../utils/emojiManager');
 function isHexColor(value) {
     return typeof value === 'string' && /^#[0-9A-Fa-f]{6}$/.test(value);
 }
 
-function safeColor(value, fallback = '#5865F2') {
+function safeColor(value, fallback = '#D4AF37') {
     return isHexColor(value) ? value : fallback;
 }
 
@@ -62,6 +63,42 @@ module.exports = (client) => {
         next();
     }
 
+
+    async function requireOwner(req, res, next) {
+        let isOwner = false;
+        if (process.env.OWNER_ID && req.user.id === process.env.OWNER_ID) isOwner = true;
+        if (!isOwner && client.application) {
+            await client.application.fetch().catch(() => null);
+            if (client.application.owner) {
+                if (client.application.owner.members) {
+                    if (client.application.owner.members.has(req.user.id)) isOwner = true;
+                } else if (client.application.owner.id === req.user.id) {
+                    isOwner = true;
+                }
+            }
+        }
+        if (!isOwner) return res.redirect('/dashboard?error=not_owner');
+        next();
+    }
+
+    function getCommandMessageCatalog() {
+        const commandsDir = path.join(__dirname, '../../commands');
+        const files = fs.existsSync(commandsDir) ? fs.readdirSync(commandsDir, { recursive: true }).filter(file => file.endsWith('.js')) : [];
+        return files.map(file => {
+            const fullPath = path.join(commandsDir, file);
+            const source = fs.readFileSync(fullPath, 'utf8');
+            const emojiKeys = [...source.matchAll(/emojis\.([A-Za-z0-9_]+)/g)].map(match => match[1]);
+            const placeholders = [...source.matchAll(/\{emoji:([A-Za-z0-9_]+)\}/g)].map(match => match[1]);
+            const replies = [...source.matchAll(/(?:reply|send)\(\{?\s*content:\s*`([^`]{1,180})/g)].slice(0, 2).map(match => match[1]);
+            return {
+                file: file.replace(/\\/g, '/'),
+                name: path.basename(file, '.js'),
+                emojiKeys: [...new Set([...emojiKeys, ...placeholders])],
+                previews: replies
+            };
+        }).sort((a, b) => a.file.localeCompare(b.file));
+    }
+
     router.get('/', checkAuth, (req, res) => {
         const userGuilds = req.user.guilds.filter(g => {
             const perms = BigInt(g.permissions);
@@ -94,46 +131,14 @@ module.exports = (client) => {
         });
     });
 
-    router.get('/admin/botsettings', checkAuth, async (req, res) => {
-        let isOwner = false;
-        if (process.env.OWNER_ID && req.user.id === process.env.OWNER_ID) isOwner = true;
-        if (!isOwner && client.application) {
-            await client.application.fetch().catch(()=>null);
-            if (client.application.owner) {
-                if (client.application.owner.members) {
-                    if (client.application.owner.members.has(req.user.id)) isOwner = true;
-                } else if (client.application.owner.id === req.user.id) {
-                    isOwner = true;
-                }
-            }
-        }
-
-        if (!isOwner) {
-            return res.redirect('/dashboard?error=not_owner');
-        }
+    router.get('/admin/botsettings', checkAuth, requireOwner, async (req, res) => {
         res.render('botsettings', {
             bot: client.user,
             settings: db.getBotSettings()
         });
     });
 
-    router.post('/admin/botsettings', checkAuth, async (req, res) => {
-        let isOwner = false;
-        if (process.env.OWNER_ID && req.user.id === process.env.OWNER_ID) isOwner = true;
-        if (!isOwner && client.application) {
-            await client.application.fetch().catch(()=>null);
-            if (client.application.owner) {
-                if (client.application.owner.members) {
-                    if (client.application.owner.members.has(req.user.id)) isOwner = true;
-                } else if (client.application.owner.id === req.user.id) {
-                    isOwner = true;
-                }
-            }
-        }
-
-        if (!isOwner) {
-            return res.redirect('/dashboard?error=not_owner');
-        }
+    router.post('/admin/botsettings', checkAuth, requireOwner, async (req, res) => {
         const { status, activity_type, activity_name, emoji_color, broadcast_tokens } = req.body;
         const tokensArray = typeof broadcast_tokens === 'string'
             ? broadcast_tokens.split('\n').map(t => t.trim()).filter(Boolean)
@@ -151,6 +156,40 @@ module.exports = (client) => {
         });
 
         res.redirect('/dashboard/admin/botsettings?success=تم+تحديث+إعدادات+البوت');
+    });
+
+
+
+    router.get('/admin/emojis', checkAuth, requireOwner, (req, res) => {
+        res.render('emojis', {
+            bot: client.user,
+            settings: db.getBotSettings(),
+            emojis: emojiManager.listEmojiEntries(),
+            commands: getCommandMessageCatalog()
+        });
+    });
+
+    router.post('/admin/emojis', checkAuth, requireOwner, (req, res) => {
+        try {
+            const { name, value, action } = req.body;
+            if (action === 'delete') {
+                emojiManager.deleteEmoji(name);
+            } else {
+                emojiManager.upsertEmoji(name, value);
+            }
+            res.redirect('/dashboard/admin/emojis?success=تم+تحديث+الإيموجيات+بنجاح');
+        } catch (error) {
+            res.redirect(`/dashboard/admin/emojis?error=${encodeURIComponent(error.message)}`);
+        }
+    });
+
+    router.post('/admin/emojis/theme', checkAuth, requireOwner, async (req, res) => {
+        const settings = db.getBotSettings();
+        const emojiColor = req.body.emoji_color || 'gold';
+        db.updateBotSettings(settings.status || 'online', settings.activity_type || 'Playing', settings.activity_name || 'ZEUS System', emojiColor, settings.broadcast_tokens || []);
+        const emojiSetup = require('../../utils/emojiSetup');
+        await emojiSetup(client).catch(console.error);
+        res.redirect('/dashboard/admin/emojis?success=تم+تطبيق+ثيم+الإيموجيات');
     });
 
     router.get('/:id', checkAuth, checkGuildAccess, (req, res) => {
