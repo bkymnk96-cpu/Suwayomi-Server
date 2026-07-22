@@ -59,11 +59,13 @@ function createPaginationRow(currentPage, totalPages, type) {
       .setDisabled(currentPage >= totalPages - 1),
     new ButtonBuilder()
       .setCustomId(`search_${type}`)
-      .setLabel("بحث").setEmoji(require('../../utils/emojis').infocircle.toString())
+      .setLabel("بحث")
+      .setEmoji(require('../../utils/emojis').infocircle.toString())
       .setStyle(ButtonStyle.Primary),
     new ButtonBuilder()
       .setCustomId("back_to_main")
-      .setLabel("رجوع").setEmoji(require('../../utils/emojis').folderopen.toString())
+      .setLabel("رجوع")
+      .setEmoji(require('../../utils/emojis').folderopen.toString())
       .setStyle(ButtonStyle.Danger)
   );
 }
@@ -125,7 +127,7 @@ module.exports = {
     await interaction.reply({
       embeds: [generatePreviewEmbed()],
       components: [mainButtons()],
-      fetchReply: true,
+      withResponse: true, // تم التغيير من fetchReply إلى withResponse
     });
 
     const paginationCache = {
@@ -224,11 +226,11 @@ module.exports = {
                   .setCustomId("basic_select")
                   .setPlaceholder("اختر العنصر لتعديله")
                   .addOptions([
-                    { label: "اسم الزر", value: "buttonName", emoji: "{emoji:adjustments}" },
-                    { label: "لون الزر", value: "buttonStyle", emoji: "{emoji:photo}" },
-                    { label: "إيموجي الزر", value: "buttonEmoji", emoji: "{emoji:moodsmile}" },
-                    { label: "رتبة الدعم", value: "supportRole", emoji: "{emoji:user}" },
-                    { label: "فئة القنوات", value: "category", emoji: "{emoji:folderopen}" },
+                    { label: "اسم الزر", value: "buttonName" },
+                    { label: "لون الزر", value: "buttonStyle" },
+                    { label: "إيموجي الزر", value: "buttonEmoji" },
+                    { label: "رتبة الدعم", value: "supportRole" },
+                    { label: "فئة القنوات", value: "category" },
                   ])
               );
               await componentInteraction.editReply({ components: [row, mainButtons()] });
@@ -241,14 +243,12 @@ module.exports = {
                 {
                   label: `نوع رسالة الترحيب (${settings.welcomeType === "embed" ? "تضمين" : "نصية"})`,
                   value: "welcomeType",
-                  emoji: "{emoji:message}",
                 },
                 {
                   label: `سؤال السبب ${settings.askReason ? "{emoji:circlecheck}" : "{emoji:circlex}"}`,
                   value: "askReason",
-                  emoji: "{emoji:infocircle}",
                 },
-                { label: "رسالة الترحيب", value: "welcomeMessage", emoji: "{emoji:mail}" },
+                { label: "رسالة الترحيب", value: "welcomeMessage" },
               ];
 
               const row = new ActionRowBuilder().addComponents(
@@ -387,10 +387,10 @@ module.exports = {
             const options = [];
             if (templateNames.length > 0) {
               templateNames.forEach(name => {
-                options.push({ label: name, value: name, emoji: "{emoji:folder}" });
+                options.push({ label: name, value: name });
               });
             }
-            options.push({ label: "{emoji:adjustments}️ تخصيص يدوي", value: "__custom__", emoji: "{emoji:adjustments}" });
+            options.push({ label: "تخصيص يدوي", value: "__custom__" });
 
             const welcomeRow = new ActionRowBuilder().addComponents(
               new StringSelectMenuBuilder()
@@ -554,28 +554,23 @@ module.exports = {
       });
     }
 
-    // ========== التعديل هنا: إضافة الزر إلى نفس صف الأزرار الموجود إن أمكن ==========
     const existingComponents = finalMessage.components || [];
     let rows = [...existingComponents];
 
-    // البحث عن أول صف يحتوي على مكون من نوع Button (type === 2)
     const existingButtonRowIndex = rows.findIndex(row =>
       row.components.some(component => component.type === 2)
     );
 
     if (existingButtonRowIndex !== -1) {
-      // نحول الصف الموجود إلى Builder لإضافة الزر الجديد
       const targetRow = ActionRowBuilder.from(rows[existingButtonRowIndex]);
       if (targetRow.components.length < 5) {
         targetRow.addComponents(newButton);
         rows[existingButtonRowIndex] = targetRow;
       } else {
-        // الصف ممتلئ، ننشئ صفاً جديداً للزر
         const newRow = new ActionRowBuilder().addComponents(newButton);
         rows.push(newRow);
       }
     } else {
-      // لا يوجد صف أزرار، ننشئ صفاً جديداً
       const newRow = new ActionRowBuilder().addComponents(newButton);
       rows.push(newRow);
     }
