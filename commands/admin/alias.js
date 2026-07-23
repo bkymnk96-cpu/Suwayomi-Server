@@ -4,7 +4,7 @@ const { success, error } = require('../../utils/embeds');
 
 // الاختصارات الافتراضية لجميع أوامر البنك
 const DEFAULT_BANK_ALIASES = [
-  { shortcut: 'رصيد', command: 'bank balance' },
+  { shortcut: 'فلوسي', command: 'bank balance' },
   { shortcut: 'يومي', command: 'bank daily' },
   { shortcut: 'اسبوعي', command: 'bank weekly' },
   { shortcut: 'ايداع', command: 'bank deposit' },
@@ -19,6 +19,8 @@ const DEFAULT_BANK_ALIASES = [
   { shortcut: 'شراء', command: 'bank buy' },
   { shortcut: 'بيع', command: 'bank sell' },
   { shortcut: 'شركات', command: 'bank companies' },
+  { shortcut: 'اسعار', command: 'bank prices' },
+  { shortcut: 'ممتلكات', command: 'bank assets' },
   { shortcut: 'مقامرة', command: 'bank gamble' },
   { shortcut: 'نرد', command: 'bank dice' },
   { shortcut: 'عملة', command: 'bank coinflip' },
@@ -28,7 +30,7 @@ const DEFAULT_BANK_ALIASES = [
   { shortcut: 'ملف', command: 'bank profile' },
   { shortcut: 'انجازات', command: 'bank achievements' },
   { shortcut: 'الاثرياء', command: 'bank top' },
-  { shortcut: 'مساعدة', command: 'bank help' },
+  { shortcut: 'اوامر', command: 'bank help' },
 ];
 
 module.exports = {
