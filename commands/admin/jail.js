@@ -36,13 +36,47 @@ module.exports = {
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles),
 
   async execute(interaction) {
-    const sub = interaction.options.getSubcommand();
+    // ---- دعم الاختصارات: استخراج الخيارات من النص إن وُجدت ----
+    const fakeArgs = interaction._args || [];
+    let fakeSub = null;
+    let fakeUser = null;
+    let fakeReason = null;
+
+    if (fakeArgs.length > 0 && !interaction.options.getSubcommand()) {
+      // تحديد subcommand من أول كلمة
+      const subCommands = ['add', 'remove', 'summon', 'setup'];
+      const possibleSub = fakeArgs[0]?.toLowerCase();
+      if (subCommands.includes(possibleSub)) {
+        fakeSub = possibleSub;
+        const rest = fakeArgs.slice(1);
+        // البحث عن منشن
+        const mentionMatch = rest[0]?.match(/^<@!?(\d+)>$/);
+        if (mentionMatch) {
+          fakeUser = mentionMatch[1];
+          fakeReason = rest.slice(1).join(' ').trim() || null;
+        } else {
+          // إذا لم يوجد منشن، ربما المستخدم كتب id مباشرة
+          if (rest[0] && /^\d+$/.test(rest[0])) {
+            fakeUser = rest[0];
+            fakeReason = rest.slice(1).join(' ').trim() || null;
+          }
+        }
+      }
+    }
+
+    const sub = interaction.options.getSubcommand() || fakeSub || '';
+
+    // ---- باقي المنطق ----
     const guild = interaction.guild;
 
     if (sub === 'setup') {
       const role = interaction.options.getRole('role');
       const channel = interaction.options.getChannel('channel');
       const staffVoice = interaction.options.getChannel('staff_voice');
+
+      if (!role || !channel) {
+        return interaction.reply({ embeds: [error('الرجاء تحديد الرتبة والروم بشكل صحيح.')], flags: ['Ephemeral'] });
+      }
 
       db.setJailSettings(guild.id, role.id, channel.id, staffVoice ? staffVoice.id : null);
 
@@ -56,9 +90,12 @@ module.exports = {
       return interaction.reply({ embeds: [error('يرجى إعداد نظام السجن أولاً باستخدام `/jail setup`')], flags: ['Ephemeral'] });
     }
 
-    const targetUser = interaction.options.getUser('user');
-    const targetMember = await guild.members.fetch(targetUser.id).catch(() => null);
+    let targetUserId = interaction.options.getUser('user')?.id || fakeUser;
+    if (!targetUserId) {
+      return interaction.reply({ embeds: [error('يرجى تحديد العضو المطلوب.')], flags: ['Ephemeral'] });
+    }
 
+    const targetMember = await guild.members.fetch(targetUserId).catch(() => null);
     if (!targetMember) {
       return interaction.reply({ embeds: [error('العضو غير موجود في السيرفر')], flags: ['Ephemeral'] });
     }
@@ -77,7 +114,7 @@ module.exports = {
         return interaction.reply({ embeds: [error('هذا العضو مسجون بالفعل')], flags: ['Ephemeral'] });
       }
 
-      const reason = interaction.options.getString('reason') || 'لا يوجد سبب';
+      const reason = interaction.options.getString('reason') || fakeReason || 'لا يوجد سبب';
       const originalRoles = targetMember.roles.cache.filter(r => r.id !== guild.id).map(r => r.id);
 
       db.addJailedUser(targetMember.id, guild.id, JSON.stringify(originalRoles));
