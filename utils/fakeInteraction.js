@@ -93,6 +93,7 @@ async function createFakeInteraction(message, cmd, args) {
   let repliedMessage = null;
 
   const fakeInteraction = {
+    _args: args || [],  
     guild,
     guildId: guild.id,
     channel: message.channel,
