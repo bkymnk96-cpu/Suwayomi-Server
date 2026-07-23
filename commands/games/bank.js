@@ -437,36 +437,41 @@ const data = new SlashCommandBuilder()
   .addSubcommand((sub) => sub.setName('companies').setDescription('عرض قائمة الشركات الاستثمارية وحالتها'))
   .addSubcommand((sub) => sub.setName('prices').setDescription('عرض أسعار متجر الممتلكات الفاخرة الحالية'))
   .addSubcommand((sub) => sub.setName('assets').setDescription('عرض جميع ممتلكاتك (منازل، شركات، منتجات المتجر)'))
-  .addSubcommand((sub) =>
-    sub
-      .setName('gamble')
-      .setDescription('المقامرة بمبلغ مالي')
-      .addStringOption((opt) =>
-        opt.setName('amount').setDescription('المبلغ أو "all"').setRequired(true)
+  .addSubcommandGroup((group) =>
+    group
+      .setName('games')
+      .setDescription('ألعاب الحظ (مقامرة، نرد، عملة، سلوتس)')
+      .addSubcommand((sub) =>
+        sub
+          .setName('gamble')
+          .setDescription('المقامرة بمبلغ مالي')
+          .addStringOption((opt) =>
+            opt.setName('amount').setDescription('المبلغ أو "all"').setRequired(true)
+          )
       )
-  )
-  .addSubcommand((sub) =>
-    sub
-      .setName('dice')
-      .setDescription('لعبة رمي النرد')
-      .addStringOption((opt) =>
-        opt.setName('amount').setDescription('المبلغ أو "all"').setRequired(true)
+      .addSubcommand((sub) =>
+        sub
+          .setName('dice')
+          .setDescription('لعبة رمي النرد')
+          .addStringOption((opt) =>
+            opt.setName('amount').setDescription('المبلغ أو "all"').setRequired(true)
+          )
       )
-  )
-  .addSubcommand((sub) =>
-    sub
-      .setName('coinflip')
-      .setDescription('لعبة رمي العملة المعدنية')
-      .addStringOption((opt) =>
-        opt.setName('amount').setDescription('المبلغ أو "all"').setRequired(true)
+      .addSubcommand((sub) =>
+        sub
+          .setName('coinflip')
+          .setDescription('لعبة رمي العملة المعدنية')
+          .addStringOption((opt) =>
+            opt.setName('amount').setDescription('المبلغ أو "all"').setRequired(true)
+          )
       )
-  )
-  .addSubcommand((sub) =>
-    sub
-      .setName('slots')
-      .setDescription('ماكينة القمار (السلوتس)')
-      .addStringOption((opt) =>
-        opt.setName('amount').setDescription('المبلغ أو "all"').setRequired(true)
+      .addSubcommand((sub) =>
+        sub
+          .setName('slots')
+          .setDescription('ماكينة القمار (السلوتس)')
+          .addStringOption((opt) =>
+            opt.setName('amount').setDescription('المبلغ أو "all"').setRequired(true)
+          )
       )
   )
   .addSubcommand((sub) =>
