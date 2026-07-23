@@ -13,7 +13,7 @@ module.exports = {
       .addStringOption(opt => opt.setName('command')
         .setDescription('اختر الأمر من القائمة أو ابحث بكتابة اسمه')
         .setRequired(true)
-        .setAutocomplete(true))  // <-- التعديل هنا: تمكين الإكمال التلقائي
+        .setAutocomplete(true))
       .addStringOption(opt => opt.setName('shortcut').setDescription('الاختصار (مثل باند)').setRequired(true))
     )
     .addSubcommand(sub => 
@@ -26,18 +26,17 @@ module.exports = {
       .setDescription('عرض قائمة الاختصارات الحالية')
     ),
 
-  // دالة الإكمال التلقائي لاقتراح الأوامر
   async autocomplete(interaction) {
     const focused = interaction.options.getFocused(true);
     if (focused.name === 'command') {
       const commandsList = [];
 
-      // جمع كل الأوامر الأساسية والفرعية من البوت
       for (const cmd of interaction.client.commands.values()) {
         const base = cmd.data.name;
+        // الأمر الأساسي
         commandsList.push({ name: base, value: base });
 
-        // استخراج الأوامر الفرعية (subcommands) والمجموعات (groups)
+        // الأوامر الفرعية والمجموعات
         if (cmd.data.options) {
           for (const opt of cmd.data.options) {
             if (opt.type === 1) { // SUB_COMMAND
@@ -55,10 +54,10 @@ module.exports = {
         }
       }
 
-      // تصفية النتائج بناءً على ما يكتبه المستخدم
+      const searchTerm = focused.value.toLowerCase();
       const filtered = commandsList
-        .filter(c => c.name.toLowerCase().startsWith(focused.value.toLowerCase()))
-        .slice(0, 25); // حد أقصى 25 اقتراح (متطلب Discord)
+        .filter(c => c.name.toLowerCase().includes(searchTerm))
+        .slice(0, 25);
 
       await interaction.respond(filtered);
     }
@@ -69,11 +68,9 @@ module.exports = {
     const guildId = interaction.guild.id;
 
     if (sub === 'add') {
-      // نستقبل الأمر كما هو (قد يكون "ban" أو "bank balance" إلخ)
       const command = interaction.options.getString('command').replace(/^\//, '');
       const shortcut = interaction.options.getString('shortcut').replace(/^#/, '');
 
-      // التحقق من وجود الأمر الأساسي (الكلمة الأولى)
       const baseCommandName = command.trim().split(/ +/)[0].toLowerCase();
       const baseCmd = interaction.client.commands.get(baseCommandName);
       if (!baseCmd) {
