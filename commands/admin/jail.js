@@ -43,19 +43,16 @@ module.exports = {
     let fakeReason = null;
 
     if (fakeArgs.length > 0 && !interaction.options.getSubcommand()) {
-      // تحديد subcommand من أول كلمة
       const subCommands = ['add', 'remove', 'summon', 'setup'];
       const possibleSub = fakeArgs[0]?.toLowerCase();
       if (subCommands.includes(possibleSub)) {
         fakeSub = possibleSub;
         const rest = fakeArgs.slice(1);
-        // البحث عن منشن
         const mentionMatch = rest[0]?.match(/^<@!?(\d+)>$/);
         if (mentionMatch) {
           fakeUser = mentionMatch[1];
           fakeReason = rest.slice(1).join(' ').trim() || null;
         } else {
-          // إذا لم يوجد منشن، ربما المستخدم كتب id مباشرة
           if (rest[0] && /^\d+$/.test(rest[0])) {
             fakeUser = rest[0];
             fakeReason = rest.slice(1).join(' ').trim() || null;
@@ -66,7 +63,6 @@ module.exports = {
 
     const sub = interaction.options.getSubcommand() || fakeSub || '';
 
-    // ---- باقي المنطق ----
     const guild = interaction.guild;
 
     if (sub === 'setup') {
@@ -126,6 +122,37 @@ module.exports = {
         return interaction.reply({ embeds: [error('فشل في إزالة رتب العضو أو إعطائه رتبة السجن تأكد من صلاحيات البوت ترتيب رتبته')], flags: ['Ephemeral'] });
       }
 
+      // ---- إخفاء جميع القنوات وإظهار روم السجن فقط ----
+      try {
+        const channels = await guild.channels.fetch();
+        const jailChannelId = settings.jailChannelId;
+
+        const permissionUpdates = channels.map(async (channel) => {
+          if (channel.id === jailChannelId) {
+            // إظهار قناة السجن والسماح بالمشاهدة والإرسال
+            await channel.permissionOverwrites.edit(targetMember.id, {
+              ViewChannel: true,
+              SendMessages: true,
+              ReadMessageHistory: true,
+              Connect: false // للقنوات الصوتية لن تؤثر على النصية
+            }).catch(() => null);
+          } else {
+            // إخفاء جميع القنوات الأخرى (نصي/صوتي/فئة)
+            await channel.permissionOverwrites.edit(targetMember.id, {
+              ViewChannel: false,
+              SendMessages: false,
+              Connect: false,
+              // منع القراءة أيضاً
+              ReadMessageHistory: false
+            }).catch(() => null);
+          }
+        });
+
+        await Promise.all(permissionUpdates);
+      } catch (permErr) {
+        console.error('Failed to update channel permissions for jailed user:', permErr);
+      }
+
       const jailChannel = guild.channels.cache.get(settings.jailChannelId);
       if (jailChannel) {
         jailChannel.send({
@@ -160,6 +187,17 @@ module.exports = {
         await targetMember.roles.set(rolesToRestore);
       } catch (err) {
         await targetMember.roles.remove(settings.jailRoleId).catch(() => null);
+      }
+
+      // ---- إزالة جميع صلاحيات القنوات المخصصة للعضو (إعادة الوضع الطبيعي) ----
+      try {
+        const channels = await guild.channels.fetch();
+        const removalPromises = channels.map(channel =>
+          channel.permissionOverwrites.delete(targetMember.id).catch(() => null)
+        );
+        await Promise.all(removalPromises);
+      } catch (permErr) {
+        console.error('Failed to remove channel permissions for unjailed user:', permErr);
       }
 
       db.removeJailedUser(targetMember.id, guild.id);
