@@ -164,7 +164,7 @@ module.exports = {
       const cooldownKey = `cooldown_daily_${userId}`;
       const lastUsed = await db.getKV(cooldownKey);
       const now = Date.now();
-      const cooldownTime = 172800000;
+      const cooldownTime = 43200000; // 12 ساعة
 
       if (lastUsed && (now - lastUsed) < cooldownTime) {
         const remaining = cooldownTime - (now - lastUsed);
@@ -220,7 +220,7 @@ module.exports = {
       const cooldownKey = `cooldown_salary_${userId}`;
       const lastUsed = await db.getKV(cooldownKey);
       const now = Date.now();
-      const cooldownTime = 86400000;
+      const cooldownTime = 21600000; // 6 ساعات
 
       if (lastUsed && (now - lastUsed) < cooldownTime) {
         const remaining = cooldownTime - (now - lastUsed);
@@ -354,7 +354,7 @@ module.exports = {
       const cooldownKey = `cooldown_invest_${userId}`;
       const lastUsed = await db.getKV(cooldownKey);
       const now = Date.now();
-      const cooldownTime = 14400000;
+      const cooldownTime = 3600000; // ساعة واحدة
 
       if (lastUsed && (now - lastUsed) < cooldownTime) {
         const remaining = cooldownTime - (now - lastUsed);
@@ -393,7 +393,7 @@ module.exports = {
       const cooldownKey = `cooldown_trade_${userId}`;
       const lastUsed = await db.getKV(cooldownKey);
       const now = Date.now();
-      const cooldownTime = 14400000;
+      const cooldownTime = 3600000; // ساعة واحدة
 
       if (lastUsed && (now - lastUsed) < cooldownTime) {
         const remaining = cooldownTime - (now - lastUsed);
@@ -504,7 +504,7 @@ module.exports = {
       const cooldownKey = `cooldown_gamble_${userId}`;
       const lastUsed = await db.getKV(cooldownKey);
       const now = Date.now();
-      const cooldownTime = 14400000;
+      const cooldownTime = 1800000; // 30 دقيقة
 
       if (lastUsed && (now - lastUsed) < cooldownTime) {
         const remaining = cooldownTime - (now - lastUsed);
@@ -543,7 +543,7 @@ module.exports = {
       const cooldownKey = `cooldown_dice_${userId}`;
       const lastUsed = await db.getKV(cooldownKey);
       const now = Date.now();
-      const cooldownTime = 14400000;
+      const cooldownTime = 1800000; // 30 دقيقة
 
       if (lastUsed && (now - lastUsed) < cooldownTime) {
         const remaining = cooldownTime - (now - lastUsed);
@@ -581,7 +581,7 @@ module.exports = {
       const cooldownKey = `cooldown_coin_${userId}`;
       const lastUsed = await db.getKV(cooldownKey);
       const now = Date.now();
-      const cooldownTime = 7200000;
+      const cooldownTime = 900000; // 15 دقيقة
 
       if (lastUsed && (now - lastUsed) < cooldownTime) {
         const remaining = cooldownTime - (now - lastUsed);
@@ -619,7 +619,7 @@ module.exports = {
       const cooldownKey = `cooldown_rob_${userId}`;
       const lastUsed = await db.getKV(cooldownKey);
       const now = Date.now();
-      const cooldownTime = 14400000;
+      const cooldownTime = 7200000; // ساعتان
 
       if (lastUsed && (now - lastUsed) < cooldownTime) {
         const remaining = cooldownTime - (now - lastUsed);
@@ -693,10 +693,10 @@ module.exports = {
       const cooldownKey = `cooldown_top_${userId}`;
       const lastUsed = await db.getKV(cooldownKey);
       const now = Date.now();
-      const cooldownTime = 30000;
+      const cooldownTime = 15000; // 15 ثانية
 
       if (lastUsed && (now - lastUsed) < cooldownTime) {
-        return interaction.reply({ content: '{emoji:clock} يرجى الانتظار 30 ثانية لتحديث قائمة الأثرياء.', ephemeral: true });
+        return interaction.reply({ content: '{emoji:clock} يرجى الانتظار 15 ثانية لتحديث قائمة الأثرياء.', ephemeral: true });
       }
 
       const topUsers = await db.getTopBalances(6);
