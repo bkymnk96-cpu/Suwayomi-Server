@@ -1176,14 +1176,14 @@ getTicketWarnings(guildId, userId) {
   getJailSettings(guildId) {
     let row = cache.jail_settings.get(guildId);
     if (!row) {
-      row = { guildId, jailRoleId: null, jailChannelId: null, staffVoiceId: null };
+      row = { guildId, jailRoleId: null, jailChannelId: null, staffVoiceId: null, staffRoleId: null };
       cache.jail_settings.set(guildId, row);
       safeCollection('jail_settings').insertOne(row).catch(() => null);
     }
     return row;
   },
-  setJailSettings(guildId, roleId, channelId, staffVoiceId) {
-    const doc = { guildId, jailRoleId: roleId, jailChannelId: channelId, staffVoiceId };
+  setJailSettings(guildId, roleId, channelId, staffVoiceId, staffRoleId) {
+    const doc = { guildId, jailRoleId: roleId, jailChannelId: channelId, staffVoiceId, staffRoleId };
     cache.jail_settings.set(guildId, doc);
     return safeCollection('jail_settings').updateOne({ guildId }, { $set: stripId(doc) }, { upsert: true }).then(() => ({ changes: 1 })).catch(() => ({ changes: 0 }));
   },
