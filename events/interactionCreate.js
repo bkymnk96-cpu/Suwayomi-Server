@@ -24,12 +24,35 @@ module.exports = {
     const client = interaction.client;
 
 
+// Handle Autocomplete Interactions
+    if (interaction.isAutocomplete()) {
+      const command = client.commands.get(interaction.commandName);
+      if (command?.autocomplete) {
+        try {
+          await command.autocomplete(interaction);
+        } catch (e) {
+          console.error(`Autocomplete error [${interaction.commandName}]:`, e);
+        }
+      }
+      return;
+    }
 
     // Handle Slash Commands
     /*1*/
     if (interaction.isChatInputCommand()) {
       const command = client.commands.get(interaction.commandName);
       if (!command) return;
+
+      const commandSettings = db.getCommandSettings(interaction.guildId, interaction.commandName);
+      if (commandSettings && commandSettings.enabled === false && !['help', 'ping'].includes(interaction.commandName)) {
+        return interaction.reply({ embeds: [error('هذا الأمر معطل حالياً من لوحة أوامري.')], flags: ['Ephemeral'] });
+      }
+      const memberRoles = interaction.member?.roles?.cache;
+      if (memberRoles) {
+        const denied = (commandSettings.denyRoles || []).some(roleId => memberRoles.has(roleId));
+        const allowed = !commandSettings.allowRoles?.length || commandSettings.allowRoles.some(roleId => memberRoles.has(roleId));
+        if (denied || !allowed) return interaction.reply({ embeds: [error('لا تملك صلاحية استخدام هذا الأمر حسب إعدادات أوامري.')], flags: ['Ephemeral'] });
+      }
 
       try {
         await command.execute(interaction);
@@ -159,6 +182,29 @@ module.exports = {
 
     if (interaction.isButton()) {
       const id = interaction.customId;
+
+
+      if (id === 'delete' || id === 'Open' || id === 'Tran') {
+          const ticket = db.getTicketByChannel(interaction.channel.id);
+          if (!ticket) return interaction.reply({ content: '{emoji:circlex} هذه القناة ليست تذكرة', flags: ['Ephemeral'] });
+          const settings = db.getTicketSettings(interaction.guild.id);
+          const staffRole = settings.staff_role;
+          const hasBypass = interaction.member.permissions.has('Administrator') || (staffRole && interaction.member.roles.cache.has(staffRole));
+          if (!hasBypass) return interaction.reply({ content: '{emoji:circlex} هذا الإجراء مخصص لطاقم الدعم والإدارة فقط.', flags: ['Ephemeral'] });
+          if (id === 'Open') {
+              db.updateTicket(interaction.channel.id, { status: 'open', closedAt: null, closedBy: null });
+              await interaction.channel.permissionOverwrites.edit(ticket.userId || ticket.ownerId, { ViewChannel: true, SendMessages: true }).catch(() => null);
+              return interaction.reply({ content: '{emoji:circlecheck} تم إعادة فتح التذكرة بنجاح' });
+          }
+          if (id === 'Tran') {
+              const attachment = await discordTranscripts.createTranscript(interaction.channel, { limit: -1, returnType: 'attachment', filename: `${interaction.channel.name}.html` }).catch(() => null);
+              return interaction.reply({ content: '{emoji:folderopen} نسخة نصية للتذكرة', files: attachment ? [attachment] : [] });
+          }
+          await interaction.reply({ content: '{emoji:trash} سيتم حذف التذكرة نهائياً خلال 5 ثواني...' });
+          db.deleteTicket(interaction.channel.id);
+          setTimeout(async () => interaction.channel.delete().catch(() => null), 5000);
+          return;
+      }
 
       if (id === 'ticket_delete') {
           const ticket = db.getTicketByChannel(interaction.channel.id);
@@ -880,9 +926,124 @@ if (
     !interaction.isModalSubmit()
 ) return;
 
+// Cookies ticket system port: handles ticket buttons/selects created by setup-ticket, send-preset, add-ticket-button and to-select.
+const cookieTicketService = require('../services/keyValueService');
+const cookieTicketUtils = require('../utils/ticketUtils');
+const zeusEmojis = require('../utils/emojis');
+
+async function createCookieTicketChannel(interaction, data, ticketReason = null) {
+    const ticketId = await cookieTicketUtils.getNextTicketId(interaction.guild.id);
+    const channel = await interaction.guild.channels.create({
+        name: cookieTicketUtils.buildTicketChannelName(ticketId),
+        type: ChannelType.GuildText,
+        parent: data.Category,
+        permissionOverwrites: [
+            { id: interaction.guild.roles.everyone.id, deny: [PermissionsBitField.Flags.ViewChannel] },
+            { id: data.Support, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] },
+            { id: interaction.user.id, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }
+        ]
+    });
+    const metadata = cookieTicketUtils.createTicketMetadata({ ticketId, ownerId: interaction.user.id, supportRoleId: data.Support, category: data.Category, channelId: channel.id, guildId: interaction.guild.id });
+    await cookieTicketService.set('ticketDB', `TICKET-PANEL_${channel.id}`, metadata);
+    db.createTicket(interaction.guild.id, interaction.user.id, channel.id, data.Category, metadata);
+
+    const welcomeMessage = data.Internal || '';
+    let embedTitle = null;
+    let embedDescription = welcomeMessage;
+    let embedColor = '#D4AF37';
+    let embedImage = null;
+    let useThumbnail = false;
+    const templateMatch = welcomeMessage.match(/^\[template:(.+?)\]/);
+    if (templateMatch) {
+        const templateName = templateMatch[1].trim();
+        const templates = (await cookieTicketService.get('welcomeTemplates', interaction.guild.id)) || {};
+        const templateData = templates[templateName];
+        if (templateData) {
+            embedTitle = templateData.title || null;
+            embedDescription = templateData.description || '';
+            embedColor = templateData.color || '#D4AF37';
+            embedImage = templateData.image || null;
+            useThumbnail = Boolean(templateData.thumbnail);
+        }
+    }
+    embedDescription = String(embedDescription || 'مرحباً بك في تذكرتك! سيقوم فريق الدعم بالرد عليك قريباً.')
+        .replaceAll('{user}', `<@${interaction.user.id}>`)
+        .replaceAll('{server}', interaction.guild.name)
+        .replaceAll('{ticket}', channel.name);
+
+    const embed = new EmbedBuilder().setColor(embedColor).setDescription(embedDescription).setFooter({ text: interaction.user.tag, iconURL: interaction.user.displayAvatarURL() }).setAuthor({ name: interaction.guild.name, iconURL: interaction.guild.iconURL() }).setTimestamp();
+    if (embedTitle) embed.setTitle(embedTitle);
+    if (embedImage) embed.setImage(embedImage);
+    if (useThumbnail) embed.setThumbnail(interaction.guild.iconURL());
+
+    const select = new StringSelectMenuBuilder().setCustomId('supportPanel').setPlaceholder('لوحة تحكم السبورت').addOptions(
+        { label: 'تغيير اسم التكت', value: 'renameTicket', emoji: zeusEmojis.adjustments.toString() },
+        { label: 'اضافة عضو للتذكرة', value: 'addMemberToTicket', emoji: zeusEmojis.circlecheck.toString() },
+        { label: 'حذف عضو من التذكرة', value: 'removeMemberFromTicket', emoji: zeusEmojis.circlex.toString() },
+        { label: 'اعادة تحميل', value: 'refreshSupportPanel', emoji: zeusEmojis.clock.toString() }
+    );
+    const row2 = new ActionRowBuilder().addComponents(select);
+    const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('close').setLabel('إغلاق').setEmoji(zeusEmojis.lock.toString()).setStyle(ButtonStyle.Danger),
+        new ButtonBuilder().setCustomId('claim').setLabel('استلام').setEmoji(zeusEmojis.circlecheck.toString()).setStyle(ButtonStyle.Success)
+    );
+    await channel.send({ content: `**${interaction.user} | <@&${data.Support}>**`, embeds: [embed], components: [row, row2] });
+    if (ticketReason) await channel.send({ embeds: [new EmbedBuilder().setColor(0xD4AF37).setDescription(`**سبب فتح التكت : \`\`\` ${ticketReason} \`\`\`**`).setTimestamp()] });
+    return interaction.reply({ content: `{emoji:circlecheck} تم إنشاء التذكرة ${channel} بنجاح.`, ephemeral: true });
+}
+
+if ((interaction.isButton() || interaction.isStringSelectMenu()) && (interaction.customId.startsWith('ticket') || interaction.customId === 'ticket_select')) {
+    const customId = interaction.isStringSelectMenu() ? interaction.values[0] : interaction.customId;
+    const data = await cookieTicketService.get('ticketDB', `Ticket_${interaction.channel.id}_${customId}`);
+    if (data) {
+        if (data.Ask === 'on') {
+            const modal = new ModalBuilder().setCustomId(`${customId}_modal`).setTitle('سبب فتح التذكرة').addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('ticket_reason').setLabel('ما هو سبب فتح التكت').setStyle(TextInputStyle.Short).setRequired(true)));
+            return interaction.showModal(modal);
+        }
+        return createCookieTicketChannel(interaction, data);
+    }
+}
+
+if (interaction.isModalSubmit() && interaction.customId.endsWith('_modal')) {
+    const buttonCustomId = interaction.customId.replace('_modal', '');
+    const data = await cookieTicketService.get('ticketDB', `Ticket_${interaction.channel.id}_${buttonCustomId}`);
+    if (data) return createCookieTicketChannel(interaction, data, interaction.fields.getTextInputValue('ticket_reason'));
+}
+
+if (interaction.isStringSelectMenu() && interaction.customId === 'supportPanel') {
+    const ticket = await cookieTicketService.get('ticketDB', `TICKET-PANEL_${interaction.channel.id}`);
+    if (!ticket) return interaction.reply({ content: '{emoji:circlex} هذه القناة ليست تذكرة.', ephemeral: true });
+    if (!cookieTicketUtils.canManageTicket(interaction.member, ticket)) return interaction.reply({ content: '{emoji:circlex} لا تمتلك الصلاحية لفعل هذا', ephemeral: true });
+    if (interaction.values[0] === 'refreshSupportPanel') return interaction.update().catch(() => null);
+    const modalIds = { renameTicket: ['renameTicketSubmitModal', 'تغيير اسم التكت', 'newNameValue', 'اسم التذكرة الجديد'], addMemberToTicket: ['addMemberToTicketSubmitModal', 'اضافة عضو للتذكرة', 'addMemberToTicketMemberId', 'ايدي العضو'], removeMemberFromTicket: ['removeMemberFromTicketSubmitModal', 'حذف عضو من التذكرة', 'removeMemberFromTicketMemberId', 'ايدي العضو'] };
+    const m = modalIds[interaction.values[0]];
+    if (m) return interaction.showModal(new ModalBuilder().setTitle(m[1]).setCustomId(m[0]).addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId(m[2]).setLabel(m[3]).setStyle(TextInputStyle.Short).setRequired(true))));
+}
+
+if (interaction.isModalSubmit() && ['renameTicketSubmitModal', 'addMemberToTicketSubmitModal', 'removeMemberFromTicketSubmitModal'].includes(interaction.customId)) {
+    const ticket = await cookieTicketService.get('ticketDB', `TICKET-PANEL_${interaction.channel.id}`);
+    if (!ticket) return interaction.reply({ content: '{emoji:circlex} هذه القناة ليست تذكرة.', ephemeral: true });
+    if (!cookieTicketUtils.canManageTicket(interaction.member, ticket)) return interaction.reply({ content: '{emoji:circlex} لا تمتلك الصلاحية لفعل هذا', ephemeral: true });
+    if (interaction.customId === 'renameTicketSubmitModal') {
+        const newName = interaction.fields.getTextInputValue('newNameValue');
+        await interaction.channel.setName(newName);
+        return interaction.reply({ embeds: [new EmbedBuilder().setColor(0x57F287).setDescription(`{emoji:circlecheck} **تم تغيير اسم التكت إلى \`${newName}\`**`).setAuthor({ name: interaction.guild.name, iconURL: interaction.guild.iconURL({ dynamic: true }) }).setFooter({ text: `طلب بواسطة: ${interaction.user.username}`, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })] });
+    }
+    const inputId = interaction.customId === 'addMemberToTicketSubmitModal' ? 'addMemberToTicketMemberId' : 'removeMemberFromTicketMemberId';
+    const memberId = interaction.fields.getTextInputValue(inputId).replace(/[<@!>]/g, '');
+    const member = await interaction.guild.members.fetch(memberId).catch(() => null);
+    if (!member) return interaction.reply({ embeds: [new EmbedBuilder().setColor(0xED4245).setDescription(`{emoji:circlex} **عذرًا، لم أجد عضوًا بهذا الايدي \`${memberId}\`**`)], ephemeral: true });
+    if (interaction.customId === 'addMemberToTicketSubmitModal') {
+        await interaction.channel.permissionOverwrites.edit(member.id, { ViewChannel: true, SendMessages: true });
+        return interaction.reply({ embeds: [new EmbedBuilder().setColor(0x57F287).setDescription(`{emoji:circlecheck} **تمت إضافة \`${member.user.username}\` للتذكرة**`)] });
+    }
+    await interaction.channel.permissionOverwrites.edit(member.id, { ViewChannel: false, SendMessages: false });
+    return interaction.reply({ embeds: [new EmbedBuilder().setColor(0x57F287).setDescription(`{emoji:circlecheck} **تم حذف \`${member.user.username}\` من التذكرة**`)] });
+}
+
 if (
     interaction.isButton() &&
-    interaction.customId === "ticket_create_btn"
+    (interaction.customId === "ticket_create_btn" || interaction.customId === "ticket" || interaction.customId.startsWith("ticket_select_"))
 ) {
 
     const settings = await db.getTicketSettings(
@@ -961,13 +1122,15 @@ await db.createTicket(
 const buttons = [
 
 new ButtonBuilder()
-.setCustomId("claim_ticket")
-.setLabel("استلام التذكرة")
+.setCustomId("claim")
+.setLabel("استلام")
+.setEmoji(require('../utils/emojis').circlecheck.toString())
 .setStyle(ButtonStyle.Success),
 
 new ButtonBuilder()
-.setCustomId("close_ticket")
-.setLabel("إغلاق التذكرة")
+.setCustomId("close")
+.setLabel("إغلاق")
+.setEmoji(require('../utils/emojis').lock.toString())
 .setStyle(ButtonStyle.Danger)
 
 ];
@@ -1215,7 +1378,7 @@ await logTicket(
 
 }
 
-if (interaction.customId === "claim_ticket") {
+if (interaction.customId === "claim_ticket" || interaction.customId === "claim") {
 
     const ticket = db.getTicketByChannel(interaction.channel.id);
 
@@ -1267,7 +1430,7 @@ if (interaction.customId === "claim_ticket") {
 
 }
 
-if (interaction.customId === "close_ticket") {
+if (interaction.customId === "close_ticket" || interaction.customId === "close") {
 
     const ticket = db.getTicketByChannel(interaction.channel.id);
 
@@ -1376,14 +1539,14 @@ if (interaction.isButton()) {
 
 if (
     interaction.isStringSelectMenu() &&
-    interaction.customId === "ticket_control_menu"
+    (interaction.customId === "ticket_control_menu" || interaction.customId === "supportPanel")
 ) {
     action = interaction.values[0];
 }
 
 const ticket = db.getTicketByChannel(interaction.channel.id);
 
-const ticketActions = ["lock_ticket", "unlock_ticket", "rename_ticket", "add_member", "remove_member", "blacklist_user", "warn_user"];
+const ticketActions = ["lock_ticket", "unlock_ticket", "rename_ticket", "renameTicket", "add_member", "addMemberToTicket", "remove_member", "removeMemberFromTicket", "blacklist_user", "warn_user", "refreshSupportPanel"];
 if (action && ticketActions.includes(action)) {
     if (!ticket) {
         return interaction.reply({
@@ -1435,7 +1598,7 @@ if (action === "unlock_ticket") {
 }
 
 
-if (action === "rename_ticket") {
+if (action === "rename_ticket" || action === "renameTicket") {
 
     const modal = new ModalBuilder()
         .setCustomId("rename_ticket_modal")
@@ -1457,10 +1620,10 @@ if (action === "rename_ticket") {
 
 if (interaction.isModalSubmit()) {
 
-    if (interaction.customId === "rename_ticket_modal") {
+    if (interaction.customId === "rename_ticket_modal" || interaction.customId === "renameTicketSubmitModal") {
 
         const newName = interaction.fields
-            .getTextInputValue("new_ticket_name")
+            .getTextInputValue(interaction.customId === "renameTicketSubmitModal" ? "newNameValue" : "new_ticket_name")
             .trim();
 
         await interaction.channel.setName(newName);
@@ -1485,7 +1648,7 @@ if (interaction.isModalSubmit()) {
 
 }
 
-if (action === "add_member") {
+if (action === "add_member" || action === "addMemberToTicket") {
 
     const modal = new ModalBuilder()
         .setCustomId("add_member_modal")
@@ -1504,7 +1667,7 @@ if (action === "add_member") {
     return interaction.showModal(modal);
 }
 
-if (action === "remove_member") {
+if (action === "remove_member" || action === "removeMemberFromTicket") {
 
     const modal = new ModalBuilder()
         .setCustomId("remove_member_modal")
@@ -1523,10 +1686,10 @@ if (action === "remove_member") {
     return interaction.showModal(modal);
 }
 
-if (interaction.customId === "add_member_modal") {
+if (interaction.customId === "add_member_modal" || interaction.customId === "addMemberToTicketSubmitModal") {
 
     let userId = interaction.fields
-        .getTextInputValue("member_id")
+        .getTextInputValue(interaction.customId === "addMemberToTicketSubmitModal" ? "addMemberToTicketMemberId" : "member_id")
         .trim();
 
     userId = userId.replace(/[<@!>]/g, "");
@@ -1567,10 +1730,10 @@ if (interaction.customId === "add_member_modal") {
     });
 }
 
-if (interaction.customId === "remove_member_modal") {
+if (interaction.customId === "remove_member_modal" || interaction.customId === "removeMemberFromTicketSubmitModal") {
 
     let userId = interaction.fields
-        .getTextInputValue("member_id")
+        .getTextInputValue(interaction.customId === "removeMemberFromTicketSubmitModal" ? "removeMemberFromTicketMemberId" : "member_id")
         .trim();
 
     userId = userId.replace(/[<@!>]/g, "");

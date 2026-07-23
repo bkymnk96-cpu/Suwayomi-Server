@@ -350,50 +350,53 @@ module.exports = (client) => {
         res.redirect(`/dashboard/${req.guild.id}/autoreplies?success=تم+حذف+الرد+التلقائي`);
     });
 
-    router.get('/:id/aliases', checkAuth, checkGuildAccess, (req, res) => {
-        const commandNames = [];
-        for (const [name, cmd] of client.commands) {
-            try {
-                const serialized = cmd.data.toJSON ? cmd.data.toJSON() : cmd.data;
-                const subcommands = serialized.options ? serialized.options.filter(opt => opt.type === 1) : [];
-                if (subcommands.length > 0) {
-                    for (const sub of subcommands) {
-                        commandNames.push(`${name} ${sub.name}`);
-                    }
-                } else {
-                    commandNames.push(name);
-                }
-            } catch (err) {
-                console.error("Error serializing command for dashboard:", err);
-                commandNames.push(name);
-            }
-        }
-        commandNames.sort();
+    function collectDashboardCommands(guildId) {
+        const aliases = db.getAliases(guildId);
+        const aliasesByCommand = new Map(aliases.map(a => [a.command, a.shortcut]));
+        const settingsByCommand = new Map(db.getAllCommandSettings(guildId).map(c => [c.command, c]));
+        const ar = { admin: 'الإدارة', ticket: 'التذاكر', public: 'عام', levels: 'المستويات', protection: 'الحماية', automation: 'الأتمتة', giveaway: 'الهدايا', invite: 'الدعوات', greet: 'الترحيب', games: 'الألعاب', music: 'الموسيقى', utils: 'الأدوات' };
+        const defaults = { ban: 'باند', kick: 'طرد', clear: 'مسح', ticket: 'تكت', 'ticket-setup': 'اعداد-تكت', 'setup-ticket': 'اعداد-تكت', 'add-ticket-button': 'زر-تكت', 'add-user': 'اضافة-عضو', 'remove-user': 'ازالة-عضو', rename: 'تسمية', close: 'اغلاق', delete: 'حذف', open: 'فتح', 'send-preset': 'لوحة-جاهزة', 'set-ticket-log': 'لوغ-تكت', 'to-select': 'سلكت-تكت', 'welcome-setup': 'ترحيب-تكت', 'admin-points': 'نقاط', 'admin-profile': 'ملف-اداري', help: 'مساعدة', ping: 'بنق' };
+        return [...client.commands.values()].map(cmd => {
+            const json = cmd.data?.toJSON ? cmd.data.toJSON() : cmd.data;
+            const name = json?.name || cmd.name;
+            const category = cmd.category || 'public';
+            return { name, slash: `/${name}`, arabicName: ar[category] ? `${ar[category]} - ${json?.description || name}` : (json?.description || name), description: json?.description || 'لا يوجد وصف', category, categoryName: ar[category] || category, shortcut: aliasesByCommand.get(name) || defaults[name] || '', settings: settingsByCommand.get(name) || { enabled: true, allowRoles: [], denyRoles: [], options: {} }, core: ['help', 'ping'].includes(name) };
+        }).sort((a, b) => a.categoryName.localeCompare(b.categoryName) || a.name.localeCompare(b.name));
+    }
 
-        res.render('aliases', {
-            guild: req.guild,
-            aliases: db.getAliases(req.guild.id),
-            commands: commandNames
-        });
+    router.get('/:id/aliases', checkAuth, checkGuildAccess, (req, res) => {
+        res.render('aliases', { guild: req.guild, commands: collectDashboardCommands(req.guild.id), aliases: db.getAliases(req.guild.id) });
     });
 
     router.post('/:id/aliases', checkAuth, checkGuildAccess, (req, res) => {
-        const { shortcut, command } = req.body;
-        if (shortcut && command) {
-            const prefix = db.getGuildSettings(req.guild.id).prefix || '#';
-            const cleanShortcut = shortcut.startsWith(prefix) ? shortcut.slice(prefix.length) : shortcut;
-            const cleanCommand = command.startsWith(prefix) ? command.slice(prefix.length) : command;
-            db.addAlias(req.guild.id, cleanShortcut.trim(), cleanCommand.trim());
+        const { shortcut, command, enabled, allowRoles, denyRoles } = req.body;
+        if (shortcut && command) db.addAlias(req.guild.id, shortcut.replace(/^#/, '').trim(), command.trim());
+        if (command) db.setCommandSettings(req.guild.id, command.trim(), { enabled: enabled === 'on', allowRoles: Array.isArray(allowRoles) ? allowRoles : (allowRoles ? [allowRoles] : []), denyRoles: Array.isArray(denyRoles) ? denyRoles : (denyRoles ? [denyRoles] : []) });
+        res.redirect(`/dashboard/${req.guild.id}/aliases?success=تم+حفظ+إعدادات+الأمر`);
+    });
+
+    router.post('/:id/aliases/toggle-all', checkAuth, checkGuildAccess, (req, res) => {
+        const enable = req.body.action !== 'disable';
+        for (const command of collectDashboardCommands(req.guild.id)) {
+            if (!enable && command.core) continue;
+            db.setCommandSettings(req.guild.id, command.name, { ...command.settings, enabled: enable });
         }
-        res.redirect(`/dashboard/${req.guild.id}/aliases?success=تمت+إضافة+الاختصار`);
+        res.redirect(`/dashboard/${req.guild.id}/aliases?success=تم+تحديث+حالة+الأوامر`);
     });
 
     router.post('/:id/aliases/delete', checkAuth, checkGuildAccess, (req, res) => {
         const { shortcut } = req.body;
-        if (shortcut) {
-            db.removeAlias(req.guild.id, shortcut);
-        }
+        if (shortcut) db.removeAlias(req.guild.id, shortcut);
         res.redirect(`/dashboard/${req.guild.id}/aliases?success=تم+حذف+الاختصار`);
+    });
+
+    router.get('/:id/admin-system', checkAuth, checkGuildAccess, (req, res) => {
+        res.render('adminsystem', { guild: req.guild, settings: db.getAdminSystemSettings(req.guild.id), profiles: db.getAdminPointProfiles(req.guild.id), logs: db.getAdminPointLogs(req.guild.id) });
+    });
+
+    router.post('/:id/admin-system/settings', checkAuth, checkGuildAccess, (req, res) => {
+        db.updateAdminSystemSettings(req.guild.id, { enabled: req.body.enabled === 'on', auto_rewards: req.body.auto_rewards === 'on', max_points: Number(req.body.max_points || 10000), notify_channel: req.body.notify_channel || null });
+        res.redirect(`/dashboard/${req.guild.id}/admin-system?success=تم+حفظ+إعدادات+نظام+الإدارة`);
     });
 
     router.get('/:id/logs', checkAuth, checkGuildAccess, (req, res) => {

@@ -1,59 +1,47 @@
-const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
-const locale = require('../../utils/locale');
-const { success, error } = require('../../utils/embeds');
-const db = require('../../database/db');
+const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
+const keyValueService = require("../../services/keyValueService");
+const { canManageTicket, normalizeTicketMetadata } = require("../../utils/ticketUtils");
 
 module.exports = {
-  data: new SlashCommandBuilder()
-    .setName('delete')
-    .setDescription('حذف التذكرة الحالية')
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels),
-
-  async execute(interaction) {
-    const ticket = db.getTicketByChannel(interaction.channelId);
-    if (!ticket) return interaction.reply({ embeds: [error(locale.get('tickets.notTicket'))], flags: ['Ephemeral'] });
-
-    const embed = new EmbedBuilder()
-      .setColor(0xED4245)
-      .setTitle('{emoji:trash} جارٍ حذف التذكرة')
-      .setDescription(`ستُحذف هذه التذكرة خلال **5 ثوانٍ** بواسطة ${interaction.user}`)
-      .setTimestamp();
-
-    await interaction.reply({ embeds: [embed] });
-
-    const settings = db.getTicketSettings(interaction.guildId);
-    const logTicket = require('../../utils/ticketlogger');
-    const discordTranscripts = require('discord-html-transcripts');
-
-    await logTicket(
-        interaction.guild,
-        settings,
-        "{emoji:trash} Ticket Deleted",
-        `التذكرة: ${interaction.channel.name}\nحذفت بواسطة: ${interaction.user}`,
-        "#ef4444"
-    );
-
-    const attachment = await discordTranscripts.createTranscript(
-        interaction.channel,
-        {
-            limit: -1,
-            returnType: "attachment",
-            filename: `${interaction.channel.name}.html`
+    adminsOnly: false,
+    data: new SlashCommandBuilder()
+        .setName('delete')
+        .setDescription('حذف قناة التذكرة الحالية'),
+        
+    async execute(interaction) {
+        const Ticket = await keyValueService.get('ticketDB', `TICKET-PANEL_${interaction.channel.id}`);
+        if (!Ticket) {
+            return interaction.reply({ content: 'هذه القناة ليست تذكرة', ephemeral: true });
         }
-    ).catch(() => null);
 
-    if (attachment) {
-        const logCh = interaction.guild.channels.cache.get(settings.log_channel);
-        if (logCh) {
-            await logCh.send({
-                content: `📂 **سجل التذكرة المحذوفة:** \`${interaction.channel.name}\``,
-                files: [attachment]
-            }).catch(console.error);
+        if (!canManageTicket(interaction.member, Ticket)) {
+            return interaction.reply({ content: '{emoji:circlex} هذا الأمر متاح لفريق الدعم أو الإداريين فقط.', ephemeral: true });
         }
+
+        const embed = new EmbedBuilder()
+            .setColor('Red')
+            .setDescription('سيتم حذف التذكرة خلال ثوانٍ');
+        
+        await interaction.reply({ embeds: [embed] });
+        
+        setTimeout(() => {
+            interaction.channel.delete().catch(() => {});
+        }, 4500);
+
+        const Logs = await keyValueService.get('ticketDB', `LogsRoom_${interaction.guild.id}`);
+        const Log = interaction.guild.channels.cache.get(Logs);
+        const normalized = normalizeTicketMetadata(Ticket, interaction.channel);
+        const logEmbed = new EmbedBuilder()
+            .setAuthor({ name: interaction.user.tag, iconURL: interaction.user.displayAvatarURL() })
+            .setTitle('حذف تذكرة')
+            .addFields(
+                { name: 'اسم التذكرة', value: `${interaction.channel.name}` },
+                { name: 'صاحب التذكرة', value: normalized.ownerId ? `<@${normalized.ownerId}>` : 'غير معروف' },
+                { name: 'حذف بواسطة', value: `${interaction.user}` },
+            )
+            .setFooter({ text: interaction.user.tag, iconURL: interaction.user.displayAvatarURL() });
+
+        Log?.send({ embeds: [logEmbed] });
+        await keyValueService.delete('ticketDB', `TICKET-PANEL_${interaction.channel.id}`);
     }
-
-    setTimeout(async () => {
-      await interaction.channel.delete(`Ticket deleted by ${interaction.user.tag}`).catch(() => null);
-    }, 5000);
-  }
-};
+}

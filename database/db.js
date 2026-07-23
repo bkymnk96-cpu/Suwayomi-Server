@@ -59,7 +59,11 @@ const cache = {
   stats_daily_members: new Map(),
   stats_hourly_messages: new Map(),
   stats_daily_voice: new Map(),
-  social_alerts: []
+  social_alerts: [],
+  admin_points: new Map(),
+  admin_points_logs: [],
+  admin_system_settings: new Map(),
+  command_settings: new Map()
 };
 
 const unhandledSqlStatements = [];
@@ -109,13 +113,16 @@ async function loadMongoCache() {
     { name: 'stats_daily_members', key: d => `${d.guildId}_${d.date}` },
     { name: 'stats_hourly_messages', key: d => `${d.guildId}_${d.date}_${d.hour}` },
     { name: 'stats_daily_voice', key: d => `${d.guildId}_${d.date}` },
-    { name: 'snipe', key: d => d.channelId }
+    { name: 'snipe', key: d => d.channelId },
+    { name: 'admin_points', key: d => `${d.guildId}_${d.userId}` },
+    { name: 'admin_system_settings', key: d => d.guildId },
+    { name: 'command_settings', key: d => `${d.guildId}_${d.command}` }
   ];
 
   const arrayCollections = [
     'warnings', 'automation', 'whitelist', 'blacklist', 'invite_ranks',
     'tickets', 'auto_reply', 'reactroles', 'aliases', 'social_alerts',
-    'ticket_blacklist', 'ticket_warnings'
+    'ticket_blacklist', 'ticket_warnings', 'admin_points_logs'
   ];
 
   for (const col of mapCollections) {
@@ -819,15 +826,32 @@ const helpers = {
     if (data.support_message !== undefined) current.support_message = data.support_message;
     if (data.ticket_message !== undefined) current.ticket_message = data.ticket_message;
     if (data.panel_data !== undefined) current.panel_data = typeof data.panel_data === 'string' ? JSON.parse(data.panel_data) : data.panel_data;
+    if (data.presets !== undefined) current.presets = typeof data.presets === 'string' ? JSON.parse(data.presets) : data.presets;
+    if (data.welcome_templates !== undefined) current.welcome_templates = typeof data.welcome_templates === 'string' ? JSON.parse(data.welcome_templates) : data.welcome_templates;
 
     cache.ticket_settings.set(guildId, current);
     return safeCollection('ticket_settings').updateOne({ guildId }, { $set: stripId(current) }, { upsert: true }).then(() => ({ changes: 1 })).catch(() => ({ changes: 0 }));
   },
-  createTicket(guildId, userId, channelId, category) {
+  createTicket(guildId, userId, channelId, category, metadata = {}) {
     const timestamp = Math.floor(Date.now() / 1000);
-    const doc = { guildId, userId, channelId, status: 'open', category, created_at: timestamp };
+    const doc = { guildId, userId, ownerId: userId, channelId, status: 'open', category, created_at: timestamp, createdAt: new Date(timestamp * 1000).toISOString(), ...metadata };
     cache.tickets.push(doc);
     safeCollection('tickets').insertOne(doc).catch(console.error);
+    return { changes: 1 };
+  },
+  getTickets(guildId) {
+    return cache.tickets.filter(t => t.guildId === guildId);
+  },
+  updateTicket(channelId, data) {
+    const t = cache.tickets.find(tk => tk.channelId === channelId);
+    if (!t) return null;
+    Object.assign(t, stripId(data));
+    safeCollection('tickets').updateOne({ channelId }, { $set: stripId(data) }).catch(console.error);
+    return t;
+  },
+  deleteTicket(channelId) {
+    cache.tickets = cache.tickets.filter(t => t.channelId !== channelId);
+    safeCollection('tickets').deleteMany({ channelId }).catch(console.error);
     return { changes: 1 };
   },
   getTicketByChannel(channelId) {
@@ -987,6 +1011,81 @@ getTicketWarnings(guildId, userId) {
     return { changes: 1 };
   },
 
+
+  getAdminSystemSettings(guildId) {
+    let row = cache.admin_system_settings.get(guildId);
+    if (!row) {
+      row = { guildId, enabled: true, max_points: 10000, auto_rewards: true, milestones: [50, 100, 250, 500], notify_channel: null };
+      cache.admin_system_settings.set(guildId, row);
+      safeCollection('admin_system_settings').updateOne({ guildId }, { $set: stripId(row) }, { upsert: true }).catch(() => null);
+    }
+    return row;
+  },
+  updateAdminSystemSettings(guildId, data) {
+    const current = this.getAdminSystemSettings(guildId);
+    Object.assign(current, stripId(data));
+    cache.admin_system_settings.set(guildId, current);
+    safeCollection('admin_system_settings').updateOne({ guildId }, { $set: stripId(current) }, { upsert: true }).catch(console.error);
+    return current;
+  },
+  getAdminPointProfile(guildId, userId) {
+    const key = `${guildId}_${userId}`;
+    let row = cache.admin_points.get(key);
+    if (!row) {
+      row = { guildId, userId, points: 0, totalAdded: 0, totalRemoved: 0, actions: 0, lastReason: null, updatedAt: Date.now() };
+      cache.admin_points.set(key, row);
+    }
+    return row;
+  },
+  getAdminPointProfiles(guildId) {
+    return [...cache.admin_points.values()].filter(p => p.guildId === guildId).sort((a, b) => (b.points || 0) - (a.points || 0));
+  },
+  changeAdminPoints(guildId, userId, amount, moderatorId, reason = 'بدون سبب') {
+    const settings = this.getAdminSystemSettings(guildId);
+    const profile = this.getAdminPointProfile(guildId, userId);
+    const before = Number(profile.points || 0);
+    const next = Math.max(0, Math.min(Number(settings.max_points || 10000), before + Number(amount || 0)));
+    const diff = next - before;
+    profile.points = next;
+    profile.actions = Number(profile.actions || 0) + 1;
+    profile.totalAdded = Number(profile.totalAdded || 0) + Math.max(diff, 0);
+    profile.totalRemoved = Number(profile.totalRemoved || 0) + Math.max(-diff, 0);
+    profile.lastReason = reason;
+    profile.updatedAt = Date.now();
+    const log = { guildId, userId, moderatorId, amount: diff, before, after: next, reason, createdAt: Date.now() };
+    cache.admin_points.set(`${guildId}_${userId}`, profile);
+    cache.admin_points_logs.push(log);
+    safeCollection('admin_points').updateOne({ guildId, userId }, { $set: stripId(profile) }, { upsert: true }).catch(console.error);
+    safeCollection('admin_points_logs').insertOne(log).catch(console.error);
+    return { profile, log };
+  },
+  resetAdminPoints(guildId, userId, moderatorId, reason = 'إعادة تعيين') {
+    const profile = this.getAdminPointProfile(guildId, userId);
+    const before = Number(profile.points || 0);
+    profile.points = 0; profile.updatedAt = Date.now(); profile.lastReason = reason;
+    const log = { guildId, userId, moderatorId, amount: -before, before, after: 0, reason, createdAt: Date.now(), reset: true };
+    cache.admin_points.set(`${guildId}_${userId}`, profile);
+    cache.admin_points_logs.push(log);
+    safeCollection('admin_points').updateOne({ guildId, userId }, { $set: stripId(profile) }, { upsert: true }).catch(console.error);
+    safeCollection('admin_points_logs').insertOne(log).catch(console.error);
+    return { profile, log };
+  },
+  getAdminPointLogs(guildId, userId = null) {
+    return cache.admin_points_logs.filter(l => l.guildId === guildId && (!userId || l.userId === userId)).sort((a, b) => b.createdAt - a.createdAt);
+  },
+  getCommandSettings(guildId, command) {
+    return cache.command_settings.get(`${guildId}_${command}`) || { guildId, command, enabled: true, allowRoles: [], denyRoles: [], options: {} };
+  },
+  setCommandSettings(guildId, command, data) {
+    const row = { ...this.getCommandSettings(guildId, command), ...data, guildId, command };
+    cache.command_settings.set(`${guildId}_${command}`, row);
+    safeCollection('command_settings').updateOne({ guildId, command }, { $set: stripId(row) }, { upsert: true }).catch(console.error);
+    return row;
+  },
+  getAllCommandSettings(guildId) {
+    return [...cache.command_settings.values()].filter(c => c.guildId === guildId);
+  },
+
   getFormsSettings(guildId) {
     let row = cache.forms_settings.get(guildId);
     if (!row) {
@@ -1000,6 +1099,8 @@ getTicketWarnings(guildId, userId) {
     let current = this.getFormsSettings(guildId);
     if (data.log_channel !== undefined) current.log_channel = data.log_channel;
     if (data.panel_data !== undefined) current.panel_data = typeof data.panel_data === 'string' ? JSON.parse(data.panel_data) : data.panel_data;
+    if (data.presets !== undefined) current.presets = typeof data.presets === 'string' ? JSON.parse(data.presets) : data.presets;
+    if (data.welcome_templates !== undefined) current.welcome_templates = typeof data.welcome_templates === 'string' ? JSON.parse(data.welcome_templates) : data.welcome_templates;
     if (data.questions !== undefined) current.questions = typeof data.questions === 'string' ? JSON.parse(data.questions) : data.questions;
 
     cache.forms_settings.set(guildId, current);
@@ -1018,6 +1119,8 @@ getTicketWarnings(guildId, userId) {
   updateReactionRoles(guildId, data) {
     let current = this.getReactionRoles(guildId);
     if (data.panel_data !== undefined) current.panel_data = typeof data.panel_data === 'string' ? JSON.parse(data.panel_data) : data.panel_data;
+    if (data.presets !== undefined) current.presets = typeof data.presets === 'string' ? JSON.parse(data.presets) : data.presets;
+    if (data.welcome_templates !== undefined) current.welcome_templates = typeof data.welcome_templates === 'string' ? JSON.parse(data.welcome_templates) : data.welcome_templates;
     if (data.roles_data !== undefined) current.roles_data = typeof data.roles_data === 'string' ? JSON.parse(data.roles_data) : data.roles_data;
 
     cache.reaction_roles.set(guildId, current);
@@ -1040,6 +1143,8 @@ getTicketWarnings(guildId, userId) {
     if (data.verified_role !== undefined) current.verified_role = data.verified_role;
     if (data.panel_channel !== undefined) current.panel_channel = data.panel_channel;
     if (data.panel_data !== undefined) current.panel_data = typeof data.panel_data === 'string' ? JSON.parse(data.panel_data) : data.panel_data;
+    if (data.presets !== undefined) current.presets = typeof data.presets === 'string' ? JSON.parse(data.presets) : data.presets;
+    if (data.welcome_templates !== undefined) current.welcome_templates = typeof data.welcome_templates === 'string' ? JSON.parse(data.welcome_templates) : data.welcome_templates;
 
     cache.captcha_settings.set(guildId, current);
     return safeCollection('captcha_settings').updateOne({ guildId }, { $set: stripId(current) }, { upsert: true }).then(() => ({ changes: 1 })).catch(() => ({ changes: 0 }));
@@ -1071,14 +1176,14 @@ getTicketWarnings(guildId, userId) {
   getJailSettings(guildId) {
     let row = cache.jail_settings.get(guildId);
     if (!row) {
-      row = { guildId, jailRoleId: null, jailChannelId: null, staffVoiceId: null };
+      row = { guildId, jailRoleId: null, jailChannelId: null, staffVoiceId: null, staffRoleId: null };
       cache.jail_settings.set(guildId, row);
       safeCollection('jail_settings').insertOne(row).catch(() => null);
     }
     return row;
   },
-  setJailSettings(guildId, roleId, channelId, staffVoiceId) {
-    const doc = { guildId, jailRoleId: roleId, jailChannelId: channelId, staffVoiceId };
+  setJailSettings(guildId, roleId, channelId, staffVoiceId, staffRoleId) {
+    const doc = { guildId, jailRoleId: roleId, jailChannelId: channelId, staffVoiceId, staffRoleId };
     cache.jail_settings.set(guildId, doc);
     return safeCollection('jail_settings').updateOne({ guildId }, { $set: stripId(doc) }, { upsert: true }).then(() => ({ changes: 1 })).catch(() => ({ changes: 0 }));
   },

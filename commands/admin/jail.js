@@ -10,9 +10,10 @@ module.exports = {
       sub
         .setName('setup')
         .setDescription('إعداد نظام السجن')
-        .addRoleOption(o => o.setName('role').setDescription('رتبة السجن').setRequired(true))
+        .addRoleOption(o => o.setName('jail_role').setDescription('رتبة السجن (تُعطى للمسجون)').setRequired(true))
         .addChannelOption(o => o.setName('channel').setDescription('روم السجن').addChannelTypes(ChannelType.GuildText).setRequired(true))
         .addChannelOption(o => o.setName('staff_voice').setDescription('روم الاستدعاء الصوتي').addChannelTypes(ChannelType.GuildVoice).setRequired(false))
+        .addRoleOption(o => o.setName('staff_role').setDescription('رتبة مسؤولي السجن (يمكنهم استخدام أوامر السجن). اتركه فارغاً للاعتماد على الأدمن فقط').setRequired(false))
     )
     .addSubcommand(sub =>
       sub
@@ -32,33 +33,113 @@ module.exports = {
         .setName('summon')
         .setDescription('استدعاء مسجون')
         .addUserOption(o => o.setName('user').setDescription('العضو للاستدعاء').setRequired(true))
-    )
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles),
+    ),
 
   async execute(interaction) {
-    const sub = interaction.options.getSubcommand();
+    const fakeArgs = interaction._args || [];
+    let fakeSub = null;
+    let fakeUser = null;
+    let fakeReason = null;
+
+    if (fakeArgs.length > 0 && !interaction.options.getSubcommand()) {
+      const subCommands = ['add', 'remove', 'summon', 'setup'];
+      const possibleSub = fakeArgs[0]?.toLowerCase();
+      if (subCommands.includes(possibleSub)) {
+        fakeSub = possibleSub;
+        const rest = fakeArgs.slice(1);
+        const mentionMatch = rest[0]?.match(/^<@!?(\d+)>$/);
+        if (mentionMatch) {
+          fakeUser = mentionMatch[1];
+          fakeReason = rest.slice(1).join(' ').trim() || null;
+        } else {
+          if (rest[0] && /^\d+$/.test(rest[0])) {
+            fakeUser = rest[0];
+            fakeReason = rest.slice(1).join(' ').trim() || null;
+          }
+        }
+      }
+    }
+
+    const sub = interaction.options.getSubcommand() || fakeSub || '';
     const guild = interaction.guild;
 
     if (sub === 'setup') {
-      const role = interaction.options.getRole('role');
+      if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
+        // صامت
+        return;
+      }
+
+      const jailRole = interaction.options.getRole('jail_role');
       const channel = interaction.options.getChannel('channel');
       const staffVoice = interaction.options.getChannel('staff_voice');
+      const staffRole = interaction.options.getRole('staff_role');
 
-      db.setJailSettings(guild.id, role.id, channel.id, staffVoice ? staffVoice.id : null);
+      if (!jailRole || !channel) {
+        return interaction.reply({ embeds: [error('الرجاء تحديد رتبة السجن والروم بشكل صحيح.')], flags: ['Ephemeral'] });
+      }
+
+      db.setJailSettings(
+        guild.id,
+        jailRole.id,
+        channel.id,
+        staffVoice ? staffVoice.id : null,
+        staffRole ? staffRole.id : null
+      );
+
+      try {
+        const channels = await guild.channels.fetch();
+        const jailChannelId = channel.id;
+
+        for (const [, ch] of channels) {
+          if (ch.id === jailChannelId) {
+            await ch.permissionOverwrites.edit(jailRole.id, {
+              ViewChannel: true,
+              SendMessages: true,
+              ReadMessageHistory: true
+            }).catch(() => null);
+          } else {
+            await ch.permissionOverwrites.edit(jailRole.id, {
+              ViewChannel: false,
+              SendMessages: false,
+              Connect: false,
+              ReadMessageHistory: false
+            }).catch(() => null);
+          }
+        }
+      } catch (permErr) {
+        console.error('Failed to set jail role permissions on channels:', permErr);
+      }
 
       return interaction.reply({
-        embeds: [success(`تم إعداد نظام السجن بنجاح\n\n**الرتبة** <@&${role.id}>\n**روم السجن** <#${channel.id}>\n**روم الاستدعاء** ${staffVoice ? `<#${staffVoice.id}>` : 'غير محدد'}`)]
+        embeds: [success(`تم إعداد نظام السجن بنجاح\n\n**رتبة السجن** <@&${jailRole.id}>\n**روم السجن** <#${channel.id}>\n**روم الاستدعاء** ${staffVoice ? `<#${staffVoice.id}>` : 'غير محدد'}\n**رتبة مسؤولي السجن** ${staffRole ? `<@&${staffRole.id}>` : 'غير محددة (المديرين فقط)'}`)]
       });
     }
 
     const settings = db.getJailSettings(guild.id);
     if (!settings || !settings.jailRoleId || !settings.jailChannelId) {
-      return interaction.reply({ embeds: [error('يرجى إعداد نظام السجن أولاً باستخدام `/jail setup`')], flags: ['Ephemeral'] });
+      // صامت
+      return;
     }
 
-    const targetUser = interaction.options.getUser('user');
-    const targetMember = await guild.members.fetch(targetUser.id).catch(() => null);
+    const hasAdmin = interaction.member.permissions.has(PermissionFlagsBits.Administrator);
+    const hasStaffRole = settings.staffRoleId && interaction.member.roles.cache.has(settings.staffRoleId);
+    if (!hasAdmin && !hasStaffRole) {
+      // صامت
+      return;
+    }
 
+    const executorIsJailed = db.getJailedUser(interaction.user.id, guild.id) || interaction.member.roles.cache.has(settings.jailRoleId);
+    if (executorIsJailed) {
+      // صامت
+      return;
+    }
+
+    let targetUserId = interaction.options.getUser('user')?.id || fakeUser;
+    if (!targetUserId) {
+      return interaction.reply({ embeds: [error('يرجى تحديد العضو المطلوب.')], flags: ['Ephemeral'] });
+    }
+
+    const targetMember = await guild.members.fetch(targetUserId).catch(() => null);
     if (!targetMember) {
       return interaction.reply({ embeds: [error('العضو غير موجود في السيرفر')], flags: ['Ephemeral'] });
     }
@@ -77,7 +158,7 @@ module.exports = {
         return interaction.reply({ embeds: [error('هذا العضو مسجون بالفعل')], flags: ['Ephemeral'] });
       }
 
-      const reason = interaction.options.getString('reason') || 'لا يوجد سبب';
+      const reason = interaction.options.getString('reason') || fakeReason || 'لا يوجد سبب';
       const originalRoles = targetMember.roles.cache.filter(r => r.id !== guild.id).map(r => r.id);
 
       db.addJailedUser(targetMember.id, guild.id, JSON.stringify(originalRoles));
@@ -86,7 +167,7 @@ module.exports = {
         await targetMember.roles.set([settings.jailRoleId], reason);
       } catch (err) {
         db.removeJailedUser(targetMember.id, guild.id);
-        return interaction.reply({ embeds: [error('فشل في إزالة رتب العضو أو إعطائه رتبة السجن تأكد من صلاحيات البوت ترتيب رتبته')], flags: ['Ephemeral'] });
+        return interaction.reply({ embeds: [error('فشل في إزالة رتب العضو أو إعطائه رتبة السجن تأكد من صلاحيات البوت وترتيب رتبته')], flags: ['Ephemeral'] });
       }
 
       const jailChannel = guild.channels.cache.get(settings.jailChannelId);
@@ -123,6 +204,16 @@ module.exports = {
         await targetMember.roles.set(rolesToRestore);
       } catch (err) {
         await targetMember.roles.remove(settings.jailRoleId).catch(() => null);
+      }
+
+      try {
+        const channels = await guild.channels.fetch();
+        const removalPromises = channels.map(channel =>
+          channel.permissionOverwrites.delete(targetMember.id).catch(() => null)
+        );
+        await Promise.all(removalPromises);
+      } catch (permErr) {
+        console.error('Failed to remove channel permissions for unjailed user:', permErr);
       }
 
       db.removeJailedUser(targetMember.id, guild.id);

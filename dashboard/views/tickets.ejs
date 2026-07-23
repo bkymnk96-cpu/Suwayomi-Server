@@ -19,6 +19,11 @@ try { pData = JSON.parse(settings.panel_data || '{}'); } catch(e) {}
         <div class="alert alert-success"><i class="fa-solid fa-circle-check"></i> تم حفظ إعدادات التذاكر بنجاح</div>
     <% } %>
 
+    <div class="glass-card reveal" style="margin-bottom:18px;">
+        <div class="section-title"><i class="fa-solid fa-wand-magic-sparkles"></i> أوامر نظام التذاكر المنقولة من Cookies</div>
+        <p class="muted">تدعم هذه الصفحة الآن أوامر: <code>/setup-ticket</code> <code>/add-ticket-button</code> <code>/add-user</code> <code>/remove-user</code> <code>/rename</code> <code>/close</code> <code>/delete</code> <code>/send-preset</code> <code>/set-ticket-log</code> <code>/to-select</code> <code>/welcome-setup</code>، وتظهر جميعها تلقائياً داخل صفحة أوامري ضمن قسم التذاكر.</p>
+    </div>
+
     <div class="tickets-layout reveal">
         
         <!-- Form Section (Right Column) -->

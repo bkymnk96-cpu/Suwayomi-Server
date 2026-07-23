@@ -1,0 +1,3 @@
+const base = require('./admin-points');
+const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
+module.exports = { category: 'admin', data: new SlashCommandBuilder().setName('admin-add-points').setDescription('إضافة نقاط إدارة لعضو').setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild).addUserOption(o => o.setName('member').setDescription('العضو').setRequired(true)).addIntegerOption(o => o.setName('points').setDescription('عدد النقاط').setRequired(true).setMinValue(1)).addStringOption(o => o.setName('reason').setDescription('السبب')), async execute(interaction) { interaction.options.getSubcommand = () => 'add'; return base.execute(interaction); } };

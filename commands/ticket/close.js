@@ -1,37 +1,46 @@
-const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
-const locale = require('../../utils/locale');
-const { success, error } = require('../../utils/embeds');
-const db = require('../../database/db');
+const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonStyle, ButtonBuilder } = require("discord.js");
+const keyValueService = require("../../services/keyValueService");
+const { canCloseTicket, getOwnerId, markTicketClosed, sendTicketCloseLog } = require("../../utils/ticketUtils");
 
 module.exports = {
-  data: new SlashCommandBuilder()
-    .setName('close')
-    .setDescription('إغلاق التذكرة الحالية')
-    .addStringOption(o => o.setName('reason').setDescription('سبب الإغلاق'))
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels),
+    adminsOnly: false,
+    data: new SlashCommandBuilder()
+        .setName('close')
+        .setDescription('إغلاق قناة التذكرة الحالية'),
+    
+    /**
+     * @param { import('discord.js').ChatInputCommandInteraction } interaction 
+     */
+    async execute(interaction) {
+        const ticket = await keyValueService.get('ticketDB', `TICKET-PANEL_${interaction.channel.id}`);
+        if (!ticket) {
+            return interaction.reply({ content: `> هذه القناة ليست تذكرة`, ephemeral: true });
+        }
 
-  async execute(interaction) {
-    const ticket = db.getTicketByChannel(interaction.channelId);
-    if (!ticket) return interaction.reply({ embeds: [error(locale.get('tickets.notTicket'))], flags: ['Ephemeral'] });
-    if (ticket.status === 'closed') return interaction.reply({ embeds: [error(locale.get('tickets.alreadyClosed'))], flags: ['Ephemeral'] });
+        if (!canCloseTicket(interaction.member, interaction.user, ticket)) {
+            return interaction.reply({ content: `{emoji:circlex} لا تمتلك صلاحية إغلاق هذه التذكرة.`, ephemeral: true });
+        }
 
-    const reason = interaction.options.getString('reason') || 'لا يوجد سبب';
+        const closedTicket = await markTicketClosed(interaction.channel, interaction.user);
+        const ownerId = getOwnerId(closedTicket);
+        if (ownerId) await interaction.channel.permissionOverwrites.edit(ownerId, { ViewChannel: false }).catch(() => {});
 
-    await interaction.channel.permissionOverwrites.edit(ticket.userId, { ViewChannel: false, SendMessages: false });
-    db.updateTicketStatus(interaction.channelId, 'closed');
+        const embed2 = new EmbedBuilder()
+            .setDescription(`تم إغلاق التذكرة بواسطة ${interaction.user}`)
+            .setColor("Yellow");
 
-    const emojis = require('../../utils/emojis.json');
-    const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId('ticket_delete').setLabel('حذف').setEmoji(emojis.trash || '<:trash:1525592579427795145>').setStyle(ButtonStyle.Danger),
-      new ButtonBuilder().setCustomId('ticket_reopen').setLabel('إعادة فتح').setEmoji(emojis.lock || '<:lock:1525592267488759909>').setStyle(ButtonStyle.Secondary),
-    );
+        const embed = new EmbedBuilder()
+            .setDescription("```لوحة فريق الدعم.```")
+            .setColor("DarkButNotBlack");
 
-    const embed = new EmbedBuilder()
-      .setColor(0xED4245)
-      .setTitle('{emoji:lock} تم إغلاق التذكرة')
-      .setDescription(`أُغلقت بواسطة ${interaction.user}\n**السبب:** ${reason}`)
-      .setTimestamp();
+        const row = new ActionRowBuilder()
+            .addComponents(
+                new ButtonBuilder().setCustomId('delete').setLabel('حذف').setStyle(ButtonStyle.Danger),
+                new ButtonBuilder().setCustomId('Open').setLabel('فتح').setStyle(ButtonStyle.Success),
+                new ButtonBuilder().setCustomId('Tran').setLabel('نسخة نصية').setStyle(ButtonStyle.Secondary)
+            );
 
-    return interaction.reply({ embeds: [embed], components: [row] });
-  }
+        await interaction.reply({ embeds: [embed2, embed], components: [row] });
+        await sendTicketCloseLog(interaction.guild, closedTicket, interaction.channel, interaction.user);
+    }
 };
