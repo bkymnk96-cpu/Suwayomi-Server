@@ -1,5 +1,5 @@
 /**
- * أمر البنك — نسخة محسّنة ومطورة بالكامل
+ * أمر البنك — نسخة محسّنة ومطورة بالكامل (v2)
  * ------------------------------------------------------------
  * يدعم هذا الملف طريقتين للاستدعاء بنفس المنطق الأساسي (بدون تكرار كود):
  *   1) سلاش كوماند:  module.exports.execute(interaction)
@@ -8,22 +8,29 @@
  *      مثال: "!bank job buy 3"  =>  args = ['job', 'buy', '3']
  *
  * كل المنطق موحّد داخل runBank(ctx) عبر كائن "ctx" يوحّد الفروقات بين
- * الـ Interaction والـ Message، وهذا هو سبب حل مشكلة عدم عمل أوامر مثل
- * "وظيفة" و "شراء" على البريفكس سابقاً (كانت تعتمد فقط على
- * interaction.options.getString التي لا وجود لها في نظام البريفكس).
+ * الـ Interaction والـ Message.
  *
- * ملاحظة هامة: تم الإبقاء حصراً على الإيموجيات المخصصة الموجودة أصلاً
- * بصيغة {emoji:xxx} ولم تتم إضافة أي إيموجي جديد أو عادي إطلاقاً.
+ * الجديد في هذه النسخة:
+ *   - أمر مساعدة (help) بتصميم احترافي مع سيلكت منيو للأقسام.
+ *   - قوائم الوظائف والشركات أصبحت سيلكت منيو بدلاً من الأزرار.
+ *   - متجر ممتلكات فاخرة جديد بالكامل (buy / شراء) مع 8 منتجات وأسعار
+ *     متغيرة تلقائياً كل 30 دقيقة (أمر prices / اسعار لعرض التفاصيل).
+ *   - أمر بيع (sell) موحّد بسيلكت منيو يعرض كل ما تملكه (منازل/شركات/منتجات).
+ *   - أمر ممتلكات (assets) يجمع كل أصولك في مكان واحد.
+ *   - أمر بروفايل يدعم عرض ملف أي عضو آخر مع صورته الرمزية.
+ *   - كل ألوان الإيمبد موحّدة باللون الذهبي لهوية البوت.
+ *
+ * ملاحظة: تم الإبقاء حصراً على الإيموجيات المخصصة الموجودة أصلاً بصيغة
+ * {emoji:xxx} ولم تتم إضافة أي إيموجي جديد أو عادي إطلاقاً — حتى في
+ * القوائم والأزرار الجديدة (Discord لا يدعم هذه الصيغة خارج نص الإيمبد).
  */
 
 const {
   SlashCommandBuilder,
   EmbedBuilder,
   ActionRowBuilder,
-  ButtonBuilder,
-  ButtonStyle,
   StringSelectMenuBuilder,
-  StringSelectMenuOptionBuilder,
+  ComponentType,
 } = require('discord.js');
 const db = require('../../database/db');
 
@@ -58,6 +65,26 @@ const companiesData = [
   { id: 10, name: 'شركة الإعمار', price: 100000000, rent: 50000000 },
 ];
 
+/** منتجات متجر الممتلكات الفاخرة — 8 منتجات بأسعار متدرجة */
+const PRODUCTS = [
+  { id: 1, name: 'دراجة هوائية', tag: 'اقتصادي', basePrice: 5000000 },
+  { id: 2, name: 'دراجة نارية رياضية', tag: 'اقتصادي', basePrice: 15000000 },
+  { id: 3, name: 'سيارة اقتصادية', tag: 'متوسط', basePrice: 40000000 },
+  { id: 4, name: 'سيارة رياضية فاخرة', tag: 'متوسط', basePrice: 80000000 },
+  { id: 5, name: 'يخت خاص', tag: 'فاخر', basePrice: 200000000 },
+  { id: 6, name: 'طائرة خاصة', tag: 'فاخر', basePrice: 500000000 },
+  { id: 7, name: 'جزيرة خاصة', tag: 'أسطوري', basePrice: 1000000000 },
+  { id: 8, name: 'قصر ملكي', tag: 'أسطوري', basePrice: 2000000000 },
+];
+
+/** حدود تقلب أسعار المتجر: كل 30 دقيقة يتغير السعر ±15% ضمن نطاق 50%-180% من السعر الأساسي */
+const PRICE_TICK_MS = 1800000; // 30 دقيقة
+const PRICE_VOLATILITY = 0.15; // ±15% لكل تحديث
+const PRICE_MAX_TICKS = 6; // حد أقصى للتراكم عند غياب طويل
+const PRICE_LOWER_MULT = 0.5;
+const PRICE_UPPER_MULT = 1.8;
+const SELL_RATE_PRODUCT = 0.65; // نسبة استرجاع بيع منتجات المتجر
+
 const RANKS = [
   { min: 0, name: 'مواطن عادي' },
   { min: 10000, name: 'تاجر مبتدئ' },
@@ -79,12 +106,15 @@ const ACHIEVEMENTS = [
   { id: 'jackpot', name: 'الحظ الأكبر', desc: 'ربحت الجائزة الكبرى في السلوتس' },
   { id: 'millionaire', name: 'المليونير', desc: 'وصل صافي ثروتك إلى مليون دولار' },
   { id: 'tycoon', name: 'إمبراطور المال', desc: 'وصل صافي ثروتك إلى مليار دولار' },
+  { id: 'first_purchase', name: 'مقتني فاخر', desc: 'اقتنيت أول منتج من متجر الممتلكات الفاخرة' },
+  { id: 'collector', name: 'جامع الثروات', desc: 'امتلكت جميع منتجات متجر الممتلكات الفاخرة مرة واحدة' },
 ];
 
 const SLOT_SYMBOLS = ['[7]', '[جرس]', '[نجمة]', '[كرز]', '[BAR]'];
 
 const AMOUNT_KEYWORDS = ['all', 'الكل', 'max', 'كل', 'الكل كامل'];
 
+// لون ذهبي موحّد لكل إيمبدات نظام البنك (هوية البوت)
 const COLOR = 0xffd700;
 const COLOR_ERROR = 0xe74c3c;
 const COLOR_WIN = 0x2ecc71;
@@ -235,6 +265,70 @@ function achievementFooter(unlockedIds) {
 }
 
 /* ============================================================
+ *  طبقة متجر الممتلكات الفاخرة (منتجات + أسعار متغيرة)
+ * ============================================================ */
+
+async function getUserProducts(userId) {
+  const raw = await db.getKV(`user_products_${userId}`);
+  try {
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+async function setUserProducts(userId, obj) {
+  await db.setKV(`user_products_${userId}`, JSON.stringify(obj));
+}
+
+/**
+ * يحسب السعر الحالي لمنتج معيّن ويحدّثه تلقائياً كل 30 دقيقة (صعوداً أو هبوطاً)
+ * ضمن نطاق محدود، ويحتفظ بأدنى وأعلى سعر وصل له المنتج على الإطلاق.
+ */
+async function getProductPrice(productId) {
+  const product = PRODUCTS.find((p) => p.id === productId);
+  if (!product) return null;
+  const now = Date.now();
+
+  let price = await db.getKV(`product_price_${productId}`);
+  let lastUpdate = await db.getKV(`product_price_time_${productId}`);
+  let min = await db.getKV(`product_min_${productId}`);
+  let max = await db.getKV(`product_max_${productId}`);
+
+  if (price === null || price === undefined) {
+    price = product.basePrice;
+    lastUpdate = now;
+    min = product.basePrice;
+    max = product.basePrice;
+    await db.setKV(`product_price_${productId}`, price);
+    await db.setKV(`product_price_time_${productId}`, lastUpdate);
+    await db.setKV(`product_min_${productId}`, min);
+    await db.setKV(`product_max_${productId}`, max);
+    return { price, min, max, base: product.basePrice };
+  }
+
+  const ticksPassed = Math.floor((now - lastUpdate) / PRICE_TICK_MS);
+  if (ticksPassed > 0) {
+    const ticks = Math.min(ticksPassed, PRICE_MAX_TICKS);
+    const lowerBound = Math.floor(product.basePrice * PRICE_LOWER_MULT);
+    const upperBound = Math.floor(product.basePrice * PRICE_UPPER_MULT);
+    for (let i = 0; i < ticks; i++) {
+      const changePct = (Math.random() * (PRICE_VOLATILITY * 2)) - PRICE_VOLATILITY;
+      price = Math.floor(price * (1 + changePct));
+      price = Math.min(upperBound, Math.max(lowerBound, price));
+    }
+    min = Math.min(min ?? price, price);
+    max = Math.max(max ?? price, price);
+    lastUpdate = now;
+    await db.setKV(`product_price_${productId}`, price);
+    await db.setKV(`product_price_time_${productId}`, lastUpdate);
+    await db.setKV(`product_min_${productId}`, min);
+    await db.setKV(`product_max_${productId}`, max);
+  }
+
+  return { price, min, max, base: product.basePrice };
+}
+
+/* ============================================================
  *  إعداد أمر السلاش
  * ============================================================ */
 
@@ -310,12 +404,12 @@ const data = new SlashCommandBuilder()
   .addSubcommand((sub) =>
     sub
       .setName('buy')
-      .setDescription('شراء منزل أو شركة لزيادة دخلك')
+      .setDescription('فتح متجر الممتلكات الفاخرة، أو شراء منزل/شركة مباشرة')
       .addStringOption((opt) =>
         opt
           .setName('type')
-          .setDescription('نوع العقار')
-          .setRequired(true)
+          .setDescription('اتركه فارغاً لفتح متجر الممتلكات الفاخرة')
+          .setRequired(false)
           .addChoices(
             { name: 'شراء منزل ($1,000,000)', value: 'house' },
             { name: 'شراء شركة ($100,000,000)', value: 'company' }
@@ -328,12 +422,12 @@ const data = new SlashCommandBuilder()
   .addSubcommand((sub) =>
     sub
       .setName('sell')
-      .setDescription('بيع منزل أو شركة تملكها مقابل نصف السعر')
+      .setDescription('بيع منزل أو شركة أو منتج تملكه')
       .addStringOption((opt) =>
         opt
           .setName('type')
-          .setDescription('نوع العقار')
-          .setRequired(true)
+          .setDescription('اتركه فارغاً لعرض كل ممتلكاتك القابلة للبيع')
+          .setRequired(false)
           .addChoices({ name: 'بيع منزل', value: 'house' }, { name: 'بيع شركة', value: 'company' })
       )
       .addIntegerOption((opt) =>
@@ -341,6 +435,8 @@ const data = new SlashCommandBuilder()
       )
   )
   .addSubcommand((sub) => sub.setName('companies').setDescription('عرض قائمة الشركات الاستثمارية وحالتها'))
+  .addSubcommand((sub) => sub.setName('prices').setDescription('عرض أسعار متجر الممتلكات الفاخرة الحالية'))
+  .addSubcommand((sub) => sub.setName('assets').setDescription('عرض جميع ممتلكاتك (منازل، شركات، منتجات المتجر)'))
   .addSubcommand((sub) =>
     sub
       .setName('gamble')
@@ -387,7 +483,12 @@ const data = new SlashCommandBuilder()
         opt.setName('hours').setDescription('عدد الساعات (سعر الساعة $500,000 بحد أقصى 3 ساعات)').setRequired(true).setMinValue(1).setMaxValue(3)
       )
   )
-  .addSubcommand((sub) => sub.setName('profile').setDescription('عرض ملفك الشخصي المالي الكامل'))
+  .addSubcommand((sub) =>
+    sub
+      .setName('profile')
+      .setDescription('عرض ملفك الشخصي المالي الكامل أو ملف عضو آخر')
+      .addUserOption((opt) => opt.setName('user').setDescription('العضو المراد عرض ملفه').setRequired(false))
+  )
   .addSubcommand((sub) => sub.setName('achievements').setDescription('عرض إنجازاتك البنكية'))
   .addSubcommand((sub) => sub.setName('top').setDescription('عرض قائمة أغنى الأعضاء في السيرفر'))
   .addSubcommand((sub) => sub.setName('help').setDescription('عرض دليل استخدام نظام البنك بالكامل'));
@@ -411,6 +512,7 @@ const PREFIX_SPECS = {
   slots: [{ name: 'amount', type: 'string' }],
   rob: [{ name: 'user', type: 'user' }],
   protect: [{ name: 'hours', type: 'string' }],
+  profile: [{ name: 'user', type: 'user' }],
 };
 
 // أسماء بديلة عربية مقبولة للأمر الفرعي عند استخدام البريفكس
@@ -433,6 +535,10 @@ const SUBCOMMAND_ALIASES = {
   شراء: 'buy',
   بيع: 'sell',
   شركات: 'companies',
+  اسعار: 'prices',
+  أسعار: 'prices',
+  ممتلكات: 'assets',
+  مقتنيات: 'assets',
   مقامرة: 'gamble',
   نرد: 'dice',
   عملة: 'coinflip',
@@ -590,6 +696,10 @@ async function runBank(ctx) {
       return cmdSell(ctx);
     case 'companies':
       return cmdCompanies(ctx);
+    case 'prices':
+      return cmdPrices(ctx);
+    case 'assets':
+      return cmdAssets(ctx);
     case 'gamble':
       return cmdGamble(ctx);
     case 'dice':
@@ -649,29 +759,40 @@ async function cmdBalance(ctx, interestGained) {
 }
 
 async function cmdProfile(ctx) {
-  const wallet = await getWallet(ctx.userId);
-  const vault = await getVault(ctx.userId);
+  const targetUser = ctx.getUser('user') || ctx.userTag;
+  const targetId = targetUser?.id || ctx.userId;
+  const isSelf = targetId === ctx.userId;
+
+  const wallet = await getWallet(targetId);
+  const vault = await getVault(targetId);
   const netWorth = wallet + vault;
   const rank = getRank(netWorth);
   const next = nextRank(netWorth);
-  const job = (await db.getKV(`job_${ctx.userId}`)) || 'بدون وظيفة';
-  const houses = (await db.getKV(`user_houses_${ctx.userId}`)) || 0;
-  const loan = (await db.getKV(`loan_${ctx.userId}`)) || 0;
-  const shield = (await db.getKV(`shield_${ctx.userId}`)) || 0;
-  const achievements = await getAchievements(ctx.userId);
+  const job = (await db.getKV(`job_${targetId}`)) || 'بدون وظيفة';
+  const houses = (await db.getKV(`user_houses_${targetId}`)) || 0;
+  const loan = (await db.getKV(`loan_${targetId}`)) || 0;
+  const shield = (await db.getKV(`shield_${targetId}`)) || 0;
+  const achievements = await getAchievements(targetId);
 
   const ownedCompanies = [];
   for (const comp of companiesData) {
     const owner = await db.getKV(`company_${comp.id}_owner`);
-    if (owner === ctx.userId) ownedCompanies.push(comp.name);
+    if (owner === targetId) ownedCompanies.push(comp.name);
   }
+
+  const products = await getUserProducts(targetId);
+  let productCount = 0;
+  for (const product of PRODUCTS) productCount += products[product.id] || 0;
 
   const shieldActive = shield && Date.now() < shield;
 
+  const displayName = targetUser?.username || 'عضو';
+
   const embed = new EmbedBuilder()
-    .setTitle('{emoji:user} الملف الشخصي المالي')
+    .setTitle(isSelf ? '{emoji:user} ملفك الشخصي المالي' : `{emoji:user} الملف الشخصي المالي — ${displayName}`)
+    .setDescription(isSelf ? `مرحباً <@${targetId}>، إليك ملفك المالي الكامل:` : `إليك الملف المالي الخاص بـ <@${targetId}>:`)
     .setColor(COLOR)
-    .setThumbnail(ctx.userTag?.displayAvatarURL ? ctx.userTag.displayAvatarURL() : null)
+    .setThumbnail(targetUser?.displayAvatarURL ? targetUser.displayAvatarURL({ size: 256 }) : null)
     .addFields(
       { name: '{emoji:crown} الرتبة', value: rank, inline: true },
       { name: '{emoji:briefcase} الوظيفة', value: job, inline: true },
@@ -680,8 +801,9 @@ async function cmdProfile(ctx) {
       { name: '{emoji:shield} الخزنة الآمنة', value: fmt(vault), inline: true },
       { name: '{emoji:chartpie} صافي الثروة', value: fmt(netWorth), inline: true },
       { name: '{emoji:briefcase} المنازل المملوكة', value: `${houses}/5`, inline: true },
-      { name: '{emoji:briefcase} الشركات المملوكة', value: ownedCompanies.length ? ownedCompanies.join('، ') : 'لا يوجد', inline: false },
+      { name: '{emoji:crown} منتجات المتجر الفاخر', value: `${productCount} قطعة`, inline: true },
       { name: '{emoji:alerttriangle} القرض الحالي', value: loan ? fmt(loan) : 'لا يوجد', inline: true },
+      { name: '{emoji:chartpie} الشركات المملوكة', value: ownedCompanies.length ? ownedCompanies.join('، ') : 'لا يوجد', inline: false },
       { name: '{emoji:shield} درع الحماية', value: shieldActive ? `نشط حتى <t:${Math.floor(shield / 1000)}:R>` : 'غير مفعّل', inline: true }
     )
     .setTimestamp();
@@ -710,6 +832,64 @@ async function cmdAchievements(ctx) {
       inline: true,
     });
   }
+
+  return ctx.reply({ embeds: [embed] });
+}
+
+/** أمر ممتلكات — يجمع كل أصول العضو (منازل، شركات، منتجات المتجر) في مكان واحد */
+async function cmdAssets(ctx) {
+  const houses = (await db.getKV(`user_houses_${ctx.userId}`)) || 0;
+
+  const ownedCompanies = [];
+  for (const comp of companiesData) {
+    const owner = await db.getKV(`company_${comp.id}_owner`);
+    if (owner === ctx.userId) ownedCompanies.push(comp);
+  }
+
+  const productsOwned = await getUserProducts(ctx.userId);
+  const ownedProducts = [];
+  let productsValue = 0;
+  for (const product of PRODUCTS) {
+    const qty = productsOwned[product.id] || 0;
+    if (qty > 0) {
+      const { price } = await getProductPrice(product.id);
+      ownedProducts.push({ product, qty, price });
+      productsValue += price * qty;
+    }
+  }
+
+  const houseValue = houses * 1000000;
+  const companiesValue = ownedCompanies.reduce((s, c) => s + c.price, 0);
+  const totalValue = houseValue + companiesValue + productsValue;
+
+  const embed = new EmbedBuilder()
+    .setTitle('{emoji:briefcase} ممتلكاتي')
+    .setDescription(`مرحباً <@${ctx.userId}>، إليك جميع ما تملكه من ممتلكات وأصول:`)
+    .setColor(COLOR)
+    .addFields(
+      {
+        name: '{emoji:gift} المنازل',
+        value: houses > 0 ? `${houses}/5 منزل — القيمة التقريبية: **${fmt(houseValue)}**` : 'لا تملك أي منزل حالياً.',
+        inline: false,
+      },
+      {
+        name: '{emoji:chartpie} الشركات المملوكة',
+        value: ownedCompanies.length
+          ? ownedCompanies.map((c) => `${c.name} — **${fmt(c.price)}**`).join('\n')
+          : 'لا تملك أي شركة استثمارية حالياً.',
+        inline: false,
+      },
+      {
+        name: '{emoji:crown} منتجات متجر الممتلكات الفاخرة',
+        value: ownedProducts.length
+          ? ownedProducts.map((p) => `${p.product.name} × ${p.qty} — **${fmt(p.price * p.qty)}**`).join('\n')
+          : 'لا تملك أي منتج من المتجر الفاخر حالياً.',
+        inline: false,
+      },
+      { name: '{emoji:trophy} إجمالي القيمة التقريبية للممتلكات', value: fmt(totalValue), inline: false }
+    )
+    .setFooter({ text: 'استخدم أمر "شراء" لفتح المتجر، و"بيع" للتخلص من ممتلكاتك مقابل المال.' })
+    .setTimestamp();
 
   return ctx.reply({ embeds: [embed] });
 }
@@ -899,11 +1079,8 @@ async function cmdJob(ctx) {
     const currentJob = await db.getKV(`job_${ctx.userId}`);
     const embed = new EmbedBuilder()
       .setTitle('{emoji:briefcase} قائمة الوظائف المتاحة')
-      .setDescription('شراء الوظائف ذات التكلفة الأعلى يمنحك راتباً أكبر عند استلام الراتب!\nيمكنك الشراء بكتابة اسم الوظيفة أو رقمها.')
+      .setDescription('شراء الوظائف ذات التكلفة الأعلى يمنحك راتباً أكبر عند استلام الراتب!\nاختر الوظيفة التي تريد شراءها من القائمة أدناه.')
       .setColor(COLOR);
-
-    const rows = [];
-    let rowButtons = [];
 
     jobTitles.forEach((job, i) => {
       const isCurrent = job.name === currentJob;
@@ -911,22 +1088,25 @@ async function cmdJob(ctx) {
         name: `${i + 1}. ${isCurrent ? '{emoji:crown} ' : '{emoji:briefcase} '}${job.name}${isCurrent ? ' (وظيفتك الحالية)' : ''}`,
         value: `{emoji:gift} التكلفة: **${fmt(job.cost)}** | {emoji:chartpie} الراتب: **${fmt(job.salary)}**`,
       });
-      rowButtons.push(
-        new ButtonBuilder()
-          .setCustomId(`bankjob_${ctx.userId}_${i}`)
-          .setLabel(`${i + 1}. ${job.name}`)
-          .setStyle(isCurrent ? ButtonStyle.Success : ButtonStyle.Secondary)
-          .setDisabled(isCurrent)
-      );
-      if (rowButtons.length === 5) {
-        rows.push(new ActionRowBuilder().addComponents(rowButtons));
-        rowButtons = [];
-      }
     });
-    if (rowButtons.length) rows.push(new ActionRowBuilder().addComponents(rowButtons));
 
-    const sent = await ctx.reply({ embeds: [embed], components: rows });
-    setupJobButtons(ctx, sent);
+    const menu = new StringSelectMenuBuilder()
+      .setCustomId(`bankjob_${ctx.userId}`)
+      .setPlaceholder('اختر وظيفة لشرائها...')
+      .setMinValues(1)
+      .setMaxValues(1)
+      .addOptions(
+        jobTitles.map((job, i) => ({
+          label: `${i + 1}. ${job.name}${job.name === currentJob ? ' (وظيفتك الحالية)' : ''}`,
+          description: `التكلفة: ${fmt(job.cost)} — الراتب: ${fmt(job.salary)}`,
+          value: String(i),
+          default: job.name === currentJob,
+        }))
+      );
+
+    const row = new ActionRowBuilder().addComponents(menu);
+    const sent = await ctx.reply({ embeds: [embed], components: [row] });
+    setupJobMenu(ctx, sent);
     return sent;
   }
 
@@ -975,27 +1155,34 @@ async function purchaseJob(ctx, jobInfo) {
   return ctx.reply({ embeds: [embed] });
 }
 
-function setupJobButtons(ctx, sentMessage) {
+function setupJobMenu(ctx, sentMessage) {
   if (!sentMessage || !sentMessage.createMessageComponentCollector) return;
   try {
-    const collector = sentMessage.createMessageComponentCollector({ time: 60000 });
-    collector.on('collect', async (btnInteraction) => {
-      if (btnInteraction.user.id !== ctx.userId) {
-        return btnInteraction.reply({ content: '{emoji:circlex} هذا الزر ليس لك.', ephemeral: true });
+    const collector = sentMessage.createMessageComponentCollector({
+      componentType: ComponentType.StringSelect,
+      time: 60000,
+    });
+    collector.on('collect', async (menuInteraction) => {
+      if (menuInteraction.user.id !== ctx.userId) {
+        return menuInteraction.reply({ content: '{emoji:circlex} هذه القائمة ليست لك.', ephemeral: true });
       }
-      const parts = btnInteraction.customId.split('_');
-      const idx = parseInt(parts[2], 10);
+      const idx = parseInt(menuInteraction.values[0], 10);
       const jobInfo = jobTitles[idx];
-      if (!jobInfo) return btnInteraction.reply({ content: '{emoji:circlex} وظيفة غير صالحة.', ephemeral: true });
+      if (!jobInfo) return menuInteraction.reply({ content: '{emoji:circlex} وظيفة غير صالحة.', ephemeral: true });
+
+      const currentJob = await db.getKV(`job_${ctx.userId}`);
+      if (jobInfo.name === currentJob) {
+        return menuInteraction.reply({ content: '{emoji:circlex} هذه وظيفتك الحالية بالفعل.', ephemeral: true });
+      }
 
       const wallet = await getWallet(ctx.userId);
       if (wallet < jobInfo.cost) {
-        return btnInteraction.reply({ content: `{emoji:circlex} رصيدك غير كافٍ لشراء وظيفة **${jobInfo.name}**.`, ephemeral: true });
+        return menuInteraction.reply({ content: `{emoji:circlex} رصيدك غير كافٍ لشراء وظيفة **${jobInfo.name}**.`, ephemeral: true });
       }
       await setWallet(ctx.userId, wallet - jobInfo.cost);
       await db.setKV(`job_${ctx.userId}`, jobInfo.name);
       await unlockAchievement(ctx.userId, 'first_job');
-      return btnInteraction.reply({
+      return menuInteraction.reply({
         content: `{emoji:circlecheck} تم شراء وظيفة **${jobInfo.name}** بنجاح! راتبك الجديد: **${fmt(jobInfo.salary)}**.`,
         ephemeral: true,
       });
@@ -1091,118 +1278,70 @@ async function cmdInvestTrade(ctx, key, riskPct, cooldownMs, label, labelDef) {
   });
 }
 
-/* ---------------------- العقارات والشركات ---------------------- */
+/* ---------------------- العقارات (منازل) والشركات ---------------------- */
 
 async function cmdBuy(ctx) {
   const type = ctx.getString('type');
-
-  if (type === 'house') {
-    const houseCost = 1000000;
-    const userHouses = (await db.getKV(`user_houses_${ctx.userId}`)) || 0;
-    if (userHouses >= 5) return ctx.reply({ embeds: [errorEmbed('لقد بلغت الحد الأقصى لشراء المنازل (5 منازل).')] });
-
-    const wallet = await getWallet(ctx.userId);
-    if (wallet < houseCost) return ctx.reply({ embeds: [errorEmbed(`رصيدك غير كافٍ لشراء منزل. السعر: **${fmt(houseCost)}**`)] });
-
-    await setWallet(ctx.userId, wallet - houseCost);
-    await db.setKV(`user_houses_${ctx.userId}`, userHouses + 1);
-
-    const newCount = userHouses + 1;
-    const unlocked = [];
-    if (await unlockAchievement(ctx.userId, 'first_house')) unlocked.push('first_house');
-    if (newCount >= 5 && (await unlockAchievement(ctx.userId, 'full_estate'))) unlocked.push('full_estate');
-
-    const embed = new EmbedBuilder()
-      .setDescription(`{emoji:circlecheck} مبروك! لقد اشتريت منزلاً جديداً بنجاح.\nعدد منازلك الحالية: **${newCount}/5** (كل منزل يمنحك 200,000 دخل إضافي مع كل راتب).`)
-      .setColor(COLOR_WIN);
-    const footer = achievementFooter(unlocked);
-    if (footer) embed.setFooter({ text: footer });
-    return ctx.reply({ embeds: [embed] });
-  }
-
-  if (type === 'company') {
-    const compId = ctx.getInteger('id');
-    if (!compId) return ctx.reply({ embeds: [errorEmbed('يجب تحديد رقم الشركة المطلوب شراءها (1-10).')] });
-
-    const comp = companiesData.find((c) => c.id === compId);
-    if (!comp) return ctx.reply({ embeds: [errorEmbed('رقم الشركة غير صحيح.')] });
-
-    const owner = await db.getKV(`company_${compId}_owner`);
-    if (owner) return ctx.reply({ embeds: [errorEmbed(`هذه الشركة مملوكة بالفعل لعضو آخر (<@${owner}>).`)] });
-
-    const wallet = await getWallet(ctx.userId);
-    if (wallet < comp.price) return ctx.reply({ embeds: [errorEmbed(`رصيدك غير كافٍ لشراء الشركة. السعر: **${fmt(comp.price)}**`)] });
-
-    await setWallet(ctx.userId, wallet - comp.price);
-    await db.setKV(`company_${compId}_owner`, ctx.userId);
-    const unlocked = (await unlockAchievement(ctx.userId, 'company_owner')) ? ['company_owner'] : [];
-
-    const embed = new EmbedBuilder()
-      .setDescription(`{emoji:circlecheck} مبروك! لقد اشتريت شركة **${comp.name}** بنجاح.\nستحصد أرباح هذه الشركة عند كل استلام راتب.`)
-      .setColor(COLOR_WIN);
-    const footer = achievementFooter(unlocked);
-    if (footer) embed.setFooter({ text: footer });
-    return ctx.reply({ embeds: [embed] });
-  }
-
-  return ctx.reply({ embeds: [errorEmbed('نوع غير معروف. الخيارات المتاحة: house / company')] });
+  if (type === 'house') return buyHouse(ctx);
+  if (type === 'company') return buyCompany(ctx, ctx.getInteger('id'));
+  return openShop(ctx);
 }
 
-async function cmdSell(ctx) {
-  const type = ctx.getString('type');
+async function buyHouse(ctx) {
+  const houseCost = 1000000;
+  const userHouses = (await db.getKV(`user_houses_${ctx.userId}`)) || 0;
+  if (userHouses >= 5) return ctx.reply({ embeds: [errorEmbed('لقد بلغت الحد الأقصى لشراء المنازل (5 منازل).')] });
 
-  if (type === 'house') {
-    const userHouses = (await db.getKV(`user_houses_${ctx.userId}`)) || 0;
-    if (userHouses <= 0) return ctx.reply({ embeds: [errorEmbed('لا تملك أي منزل لبيعه.')] });
+  const wallet = await getWallet(ctx.userId);
+  if (wallet < houseCost) return ctx.reply({ embeds: [errorEmbed(`رصيدك غير كافٍ لشراء منزل. السعر: **${fmt(houseCost)}**`)] });
 
-    const refund = 500000;
-    const wallet = (await getWallet(ctx.userId)) + refund;
-    await setWallet(ctx.userId, wallet);
-    await db.setKV(`user_houses_${ctx.userId}`, userHouses - 1);
+  await setWallet(ctx.userId, wallet - houseCost);
+  await db.setKV(`user_houses_${ctx.userId}`, userHouses + 1);
 
-    return ctx.reply({
-      embeds: [
-        new EmbedBuilder()
-          .setDescription(`{emoji:circlecheck} تم بيع منزل واحد مقابل **${fmt(refund)}**.\nعدد منازلك المتبقية: **${userHouses - 1}/5**.`)
-          .setColor(COLOR),
-      ],
-    });
-  }
+  const newCount = userHouses + 1;
+  const unlocked = [];
+  if (await unlockAchievement(ctx.userId, 'first_house')) unlocked.push('first_house');
+  if (newCount >= 5 && (await unlockAchievement(ctx.userId, 'full_estate'))) unlocked.push('full_estate');
 
-  if (type === 'company') {
-    const compId = ctx.getInteger('id');
-    const comp = companiesData.find((c) => c.id === compId);
-    if (!comp) return ctx.reply({ embeds: [errorEmbed('يجب تحديد رقم شركة صحيح (1-10) تملكها.')] });
+  const embed = new EmbedBuilder()
+    .setDescription(`{emoji:circlecheck} مبروك! لقد اشتريت منزلاً جديداً بنجاح.\nعدد منازلك الحالية: **${newCount}/5** (كل منزل يمنحك 200,000 دخل إضافي مع كل راتب).`)
+    .setColor(COLOR_WIN);
+  const footer = achievementFooter(unlocked);
+  if (footer) embed.setFooter({ text: footer });
+  return ctx.reply({ embeds: [embed] });
+}
 
-    const owner = await db.getKV(`company_${compId}_owner`);
-    if (owner !== ctx.userId) return ctx.reply({ embeds: [errorEmbed('أنت لا تملك هذه الشركة.')] });
+async function buyCompany(ctx, compId) {
+  if (!compId) return ctx.reply({ embeds: [errorEmbed('يجب تحديد رقم الشركة المطلوب شراءها (1-10).')] });
 
-    const refund = Math.floor(comp.price * 0.5);
-    const wallet = (await getWallet(ctx.userId)) + refund;
-    await setWallet(ctx.userId, wallet);
-    await db.deleteKV(`company_${compId}_owner`);
+  const comp = companiesData.find((c) => c.id === compId);
+  if (!comp) return ctx.reply({ embeds: [errorEmbed('رقم الشركة غير صحيح.')] });
 
-    return ctx.reply({
-      embeds: [
-        new EmbedBuilder()
-          .setDescription(`{emoji:circlecheck} تم بيع شركة **${comp.name}** مقابل **${fmt(refund)}** (نصف السعر الأصلي).`)
-          .setColor(COLOR),
-      ],
-    });
-  }
+  const owner = await db.getKV(`company_${compId}_owner`);
+  if (owner) return ctx.reply({ embeds: [errorEmbed(`هذه الشركة مملوكة بالفعل لعضو آخر (<@${owner}>).`)] });
 
-  return ctx.reply({ embeds: [errorEmbed('نوع غير معروف. الخيارات المتاحة: house / company')] });
+  const wallet = await getWallet(ctx.userId);
+  if (wallet < comp.price) return ctx.reply({ embeds: [errorEmbed(`رصيدك غير كافٍ لشراء الشركة. السعر: **${fmt(comp.price)}**`)] });
+
+  await setWallet(ctx.userId, wallet - comp.price);
+  await db.setKV(`company_${compId}_owner`, ctx.userId);
+  const unlocked = (await unlockAchievement(ctx.userId, 'company_owner')) ? ['company_owner'] : [];
+
+  const embed = new EmbedBuilder()
+    .setDescription(`{emoji:circlecheck} مبروك! لقد اشتريت شركة **${comp.name}** بنجاح.\nستحصد أرباح هذه الشركة عند كل استلام راتب.`)
+    .setColor(COLOR_WIN);
+  const footer = achievementFooter(unlocked);
+  if (footer) embed.setFooter({ text: footer });
+  return ctx.reply({ embeds: [embed] });
 }
 
 async function cmdCompanies(ctx) {
   const embed = new EmbedBuilder()
     .setTitle('{emoji:briefcase} دليل الشركات الاستثمارية')
-    .setDescription('تمنحك الشركات دخلاً هائلاً (يتقلب قليلاً كل راتب) ولكن بتكلفة شراء عالية!')
+    .setDescription('تمنحك الشركات دخلاً هائلاً (يتقلب قليلاً كل راتب) ولكن بتكلفة شراء عالية!\nاختر شركة من القائمة أدناه لشرائها.')
     .setColor(COLOR);
 
-  const rows = [];
-  let rowButtons = [];
-
+  const options = [];
   for (const comp of companiesData) {
     const owner = await db.getKV(`company_${comp.id}_owner`);
     const ownerMention = owner ? `<@${owner}>` : 'لا يوجد مالك';
@@ -1210,49 +1349,375 @@ async function cmdCompanies(ctx) {
       name: `${comp.id}. ${comp.name}`,
       value: `{emoji:gift} السعر: **${fmt(comp.price)}** | {emoji:chartpie} الدخل التقريبي: **${fmt(comp.rent)}**\n{emoji:crown} المالك الحالي: ${ownerMention}`,
     });
-    rowButtons.push(
-      new ButtonBuilder()
-        .setCustomId(`bankcomp_${ctx.userId}_${comp.id}`)
-        .setLabel(`شراء ${comp.id}`)
-        .setStyle(owner ? ButtonStyle.Secondary : ButtonStyle.Success)
-        .setDisabled(!!owner)
-    );
-    if (rowButtons.length === 5) {
-      rows.push(new ActionRowBuilder().addComponents(rowButtons));
-      rowButtons = [];
-    }
+    options.push({
+      label: `${comp.id}. ${comp.name}${owner ? ' (مملوكة)' : ''}`,
+      description: `السعر: ${fmt(comp.price)} — الدخل: ${fmt(comp.rent)}`,
+      value: String(comp.id),
+    });
   }
-  if (rowButtons.length) rows.push(new ActionRowBuilder().addComponents(rowButtons));
 
-  const sent = await ctx.reply({ embeds: [embed], components: rows });
-  setupCompanyButtons(ctx, sent);
+  const menu = new StringSelectMenuBuilder()
+    .setCustomId(`bankcomp_${ctx.userId}`)
+    .setPlaceholder('اختر شركة لشرائها...')
+    .setMinValues(1)
+    .setMaxValues(1)
+    .addOptions(options);
+
+  const sent = await ctx.reply({ embeds: [embed], components: [new ActionRowBuilder().addComponents(menu)] });
+  setupCompanyMenu(ctx, sent);
   return sent;
 }
 
-function setupCompanyButtons(ctx, sentMessage) {
+function setupCompanyMenu(ctx, sentMessage) {
   if (!sentMessage || !sentMessage.createMessageComponentCollector) return;
   try {
-    const collector = sentMessage.createMessageComponentCollector({ time: 60000 });
-    collector.on('collect', async (btnInteraction) => {
-      if (btnInteraction.user.id !== ctx.userId) {
-        return btnInteraction.reply({ content: '{emoji:circlex} هذا الزر ليس لك.', ephemeral: true });
+    const collector = sentMessage.createMessageComponentCollector({
+      componentType: ComponentType.StringSelect,
+      time: 60000,
+    });
+    collector.on('collect', async (menuInteraction) => {
+      if (menuInteraction.user.id !== ctx.userId) {
+        return menuInteraction.reply({ content: '{emoji:circlex} هذه القائمة ليست لك.', ephemeral: true });
       }
-      const parts = btnInteraction.customId.split('_');
-      const compId = parseInt(parts[2], 10);
+      const compId = parseInt(menuInteraction.values[0], 10);
       const comp = companiesData.find((c) => c.id === compId);
-      if (!comp) return btnInteraction.reply({ content: '{emoji:circlex} شركة غير صالحة.', ephemeral: true });
+      if (!comp) return menuInteraction.reply({ content: '{emoji:circlex} شركة غير صالحة.', ephemeral: true });
 
       const owner = await db.getKV(`company_${compId}_owner`);
-      if (owner) return btnInteraction.reply({ content: '{emoji:circlex} هذه الشركة أصبحت مملوكة بالفعل.', ephemeral: true });
+      if (owner) return menuInteraction.reply({ content: '{emoji:circlex} هذه الشركة أصبحت مملوكة بالفعل.', ephemeral: true });
 
       const wallet = await getWallet(ctx.userId);
       if (wallet < comp.price) {
-        return btnInteraction.reply({ content: `{emoji:circlex} رصيدك غير كافٍ لشراء **${comp.name}**.`, ephemeral: true });
+        return menuInteraction.reply({ content: `{emoji:circlex} رصيدك غير كافٍ لشراء **${comp.name}**.`, ephemeral: true });
       }
       await setWallet(ctx.userId, wallet - comp.price);
       await db.setKV(`company_${compId}_owner`, ctx.userId);
       await unlockAchievement(ctx.userId, 'company_owner');
-      return btnInteraction.reply({ content: `{emoji:circlecheck} تم شراء شركة **${comp.name}** بنجاح!`, ephemeral: true });
+      return menuInteraction.reply({ content: `{emoji:circlecheck} تم شراء شركة **${comp.name}** بنجاح!`, ephemeral: true });
+    });
+  } catch {
+    /* تجاهل */
+  }
+}
+
+/* ---------------------- متجر الممتلكات الفاخرة (شراء / بيع / أسعار) ---------------------- */
+
+async function openShop(ctx) {
+  const options = [];
+  for (const product of PRODUCTS) {
+    const { price } = await getProductPrice(product.id);
+    options.push({
+      label: `${product.name} — ${fmt(price)}`,
+      description: `فئة: ${product.tag} — اقتنِ ${product.name} لتعزيز ثروتك`,
+      value: String(product.id),
+    });
+  }
+
+  const menu = new StringSelectMenuBuilder()
+    .setCustomId(`bankshop_${ctx.userId}`)
+    .setPlaceholder('اختر منتجاً لشرائه من المتجر...')
+    .setMinValues(1)
+    .setMaxValues(1)
+    .addOptions(options);
+
+  const embed = new EmbedBuilder()
+    .setDescription(
+      `{emoji:gift} أهلاً بك في **متجر الممتلكات الفاخرة**!\n` +
+        `هنا يمكنك اقتناء أفخم السيارات والدراجات واليخوت والطائرات، بل وحتى الجزر والقصور الخاصة، لتعزيز مكانتك ورفع صافي ثروتك.\n\n` +
+        `{emoji:chartpie} أسعار كل المنتجات تتغير تلقائياً كل 30 دقيقة صعوداً وهبوطاً حسب حركة السوق، لذا راقب أمر \`اسعار\` لاقتناص أفضل الصفقات قبل شرائك.\n\n` +
+        `{emoji:crown} اختر المنتج الذي ترغب باقتنائه من القائمة أدناه.`
+    )
+    .setColor(COLOR);
+
+  const sent = await ctx.reply({ content: `<@${ctx.userId}>`, embeds: [embed], components: [new ActionRowBuilder().addComponents(menu)] });
+  setupShopMenu(ctx, sent);
+  return sent;
+}
+
+function setupShopMenu(ctx, sentMessage) {
+  if (!sentMessage || !sentMessage.createMessageComponentCollector) return;
+  try {
+    const collector = sentMessage.createMessageComponentCollector({
+      componentType: ComponentType.StringSelect,
+      time: 90000,
+    });
+    collector.on('collect', async (menuInteraction) => {
+      if (menuInteraction.user.id !== ctx.userId) {
+        return menuInteraction.reply({ content: '{emoji:circlex} هذه القائمة ليست لك.', ephemeral: true });
+      }
+      const productId = parseInt(menuInteraction.values[0], 10);
+      const product = PRODUCTS.find((p) => p.id === productId);
+      if (!product) return menuInteraction.reply({ content: '{emoji:circlex} منتج غير صالح.', ephemeral: true });
+
+      const { price } = await getProductPrice(productId);
+      const wallet = await getWallet(ctx.userId);
+      if (wallet < price) {
+        return menuInteraction.reply({
+          content: `{emoji:circlex} رصيدك غير كافٍ لشراء **${product.name}**. السعر الحالي: **${fmt(price)}**.`,
+          ephemeral: true,
+        });
+      }
+
+      await setWallet(ctx.userId, wallet - price);
+      const products = await getUserProducts(ctx.userId);
+      products[productId] = (products[productId] || 0) + 1;
+      await setUserProducts(ctx.userId, products);
+
+      const unlockedIds = [];
+      if (await unlockAchievement(ctx.userId, 'first_purchase')) unlockedIds.push('first_purchase');
+      const ownsAll = PRODUCTS.every((p) => products[p.id] && products[p.id] > 0);
+      if (ownsAll && (await unlockAchievement(ctx.userId, 'collector'))) unlockedIds.push('collector');
+
+      let msg = `{emoji:circlecheck} تم شراء **${product.name}** بنجاح مقابل **${fmt(price)}**!`;
+      const footer = achievementFooter(unlockedIds);
+      if (footer) msg += `\n${footer}`;
+
+      return menuInteraction.reply({ content: msg, ephemeral: true });
+    });
+  } catch {
+    /* تجاهل */
+  }
+}
+
+async function cmdPrices(ctx) {
+  const embed = new EmbedBuilder()
+    .setTitle('{emoji:chartpie} أسعار متجر الممتلكات الفاخرة')
+    .setDescription('الأسعار تتغير تلقائياً كل 30 دقيقة صعوداً وهبوطاً حسب حركة السوق.\nاختر منتجاً من القائمة أدناه لعرض تفاصيل سعره الكاملة.')
+    .setColor(COLOR)
+    .setTimestamp();
+
+  const options = [];
+  for (const product of PRODUCTS) {
+    const { price, base } = await getProductPrice(product.id);
+    const diff = price - base;
+    const pct = ((diff / base) * 100).toFixed(1);
+    const trendText = diff > 0 ? `{emoji:confetti} ارتفاع ${pct}%` : diff < 0 ? `{emoji:circlex} انخفاض ${Math.abs(pct)}%` : 'مستقر';
+    embed.addFields({
+      name: `${product.name} (${product.tag})`,
+      value: `السعر الحالي: **${fmt(price)}**\n${trendText}`,
+      inline: true,
+    });
+    options.push({
+      label: `${product.name} — ${fmt(price)}`,
+      description: `الفئة: ${product.tag}`,
+      value: String(product.id),
+    });
+  }
+
+  const menu = new StringSelectMenuBuilder()
+    .setCustomId(`bankpriceinfo_${ctx.userId}`)
+    .setPlaceholder('اختر منتجاً لعرض تفاصيل سعره...')
+    .setMinValues(1)
+    .setMaxValues(1)
+    .addOptions(options);
+
+  const sent = await ctx.reply({ embeds: [embed], components: [new ActionRowBuilder().addComponents(menu)] });
+  setupPriceInfoMenu(ctx, sent);
+  return sent;
+}
+
+function setupPriceInfoMenu(ctx, sentMessage) {
+  if (!sentMessage || !sentMessage.createMessageComponentCollector) return;
+  try {
+    const collector = sentMessage.createMessageComponentCollector({
+      componentType: ComponentType.StringSelect,
+      time: 90000,
+    });
+    collector.on('collect', async (menuInteraction) => {
+      if (menuInteraction.user.id !== ctx.userId) {
+        return menuInteraction.reply({ content: '{emoji:circlex} هذه القائمة ليست لك.', ephemeral: true });
+      }
+      const productId = parseInt(menuInteraction.values[0], 10);
+      const product = PRODUCTS.find((p) => p.id === productId);
+      if (!product) return menuInteraction.reply({ content: '{emoji:circlex} منتج غير صالح.', ephemeral: true });
+
+      const { price, min, max, base } = await getProductPrice(productId);
+      const detailEmbed = new EmbedBuilder()
+        .setTitle(`{emoji:chartpie} تفاصيل سعر: ${product.name}`)
+        .setColor(COLOR)
+        .addFields(
+          { name: '{emoji:briefcase} الفئة', value: product.tag, inline: true },
+          { name: '{emoji:gift} السعر الأساسي', value: fmt(base), inline: true },
+          { name: '{emoji:chartpie} السعر الحالي', value: fmt(price), inline: true },
+          { name: '{emoji:circlex} أدنى سعر وصل له', value: fmt(min), inline: true },
+          { name: '{emoji:confetti} أعلى سعر وصل له', value: fmt(max), inline: true },
+          { name: '{emoji:clock} تحديث السعر التالي', value: 'خلال 30 دقيقة كحد أقصى', inline: true }
+        )
+        .setTimestamp();
+
+      return menuInteraction.reply({ embeds: [detailEmbed], ephemeral: true });
+    });
+  } catch {
+    /* تجاهل */
+  }
+}
+
+async function cmdSell(ctx) {
+  const type = ctx.getString('type');
+  if (type === 'house') return sellHouse(ctx);
+  if (type === 'company') return sellCompany(ctx, ctx.getInteger('id'));
+  return openSellMenu(ctx);
+}
+
+async function sellHouse(ctx) {
+  const userHouses = (await db.getKV(`user_houses_${ctx.userId}`)) || 0;
+  if (userHouses <= 0) return ctx.reply({ embeds: [errorEmbed('لا تملك أي منزل لبيعه.')] });
+
+  const refund = 500000;
+  const wallet = (await getWallet(ctx.userId)) + refund;
+  await setWallet(ctx.userId, wallet);
+  await db.setKV(`user_houses_${ctx.userId}`, userHouses - 1);
+
+  return ctx.reply({
+    embeds: [
+      new EmbedBuilder()
+        .setDescription(`{emoji:circlecheck} تم بيع منزل واحد مقابل **${fmt(refund)}**.\nعدد منازلك المتبقية: **${userHouses - 1}/5**.`)
+        .setColor(COLOR),
+    ],
+  });
+}
+
+async function sellCompany(ctx, compId) {
+  const comp = companiesData.find((c) => c.id === compId);
+  if (!comp) return ctx.reply({ embeds: [errorEmbed('يجب تحديد رقم شركة صحيح (1-10) تملكها.')] });
+
+  const owner = await db.getKV(`company_${compId}_owner`);
+  if (owner !== ctx.userId) return ctx.reply({ embeds: [errorEmbed('أنت لا تملك هذه الشركة.')] });
+
+  const refund = Math.floor(comp.price * 0.5);
+  const wallet = (await getWallet(ctx.userId)) + refund;
+  await setWallet(ctx.userId, wallet);
+  await db.deleteKV(`company_${compId}_owner`);
+
+  return ctx.reply({
+    embeds: [
+      new EmbedBuilder()
+        .setDescription(`{emoji:circlecheck} تم بيع شركة **${comp.name}** مقابل **${fmt(refund)}** (نصف السعر الأصلي).`)
+        .setColor(COLOR),
+    ],
+  });
+}
+
+async function openSellMenu(ctx) {
+  const options = [];
+
+  const houses = (await db.getKV(`user_houses_${ctx.userId}`)) || 0;
+  if (houses > 0) {
+    options.push({
+      label: `منزل (تملك ${houses})`,
+      description: `بيع منزل واحد مقابل ${fmt(500000)}`,
+      value: 'house',
+    });
+  }
+
+  for (const comp of companiesData) {
+    const owner = await db.getKV(`company_${comp.id}_owner`);
+    if (owner === ctx.userId) {
+      const refund = Math.floor(comp.price * 0.5);
+      options.push({
+        label: comp.name,
+        description: `بيع الشركة مقابل ${fmt(refund)}`,
+        value: `company_${comp.id}`,
+      });
+    }
+  }
+
+  const productsOwned = await getUserProducts(ctx.userId);
+  for (const product of PRODUCTS) {
+    const qty = productsOwned[product.id] || 0;
+    if (qty > 0) {
+      const { price } = await getProductPrice(product.id);
+      const refund = Math.floor(price * SELL_RATE_PRODUCT);
+      options.push({
+        label: `${product.name} (تملك ${qty})`,
+        description: `بيع قطعة واحدة مقابل ${fmt(refund)}`,
+        value: `product_${product.id}`,
+      });
+    }
+  }
+
+  if (!options.length) {
+    return ctx.reply({ embeds: [errorEmbed('لا تملك أي ممتلكات قابلة للبيع حالياً. استخدم أمر `شراء` لاقتناء منتجات أو عقارات أولاً.')] });
+  }
+
+  const menu = new StringSelectMenuBuilder()
+    .setCustomId(`banksell_${ctx.userId}`)
+    .setPlaceholder('اختر ما ترغب ببيعه...')
+    .setMinValues(1)
+    .setMaxValues(1)
+    .addOptions(options.slice(0, 25));
+
+  const embed = new EmbedBuilder()
+    .setTitle('{emoji:gift} بيع الممتلكات')
+    .setDescription('اختر من القائمة أدناه الممتلكات التي ترغب ببيعها مقابل جزء من قيمتها الحالية.')
+    .setColor(COLOR);
+
+  const sent = await ctx.reply({ embeds: [embed], components: [new ActionRowBuilder().addComponents(menu)] });
+  setupSellMenu(ctx, sent);
+  return sent;
+}
+
+function setupSellMenu(ctx, sentMessage) {
+  if (!sentMessage || !sentMessage.createMessageComponentCollector) return;
+  try {
+    const collector = sentMessage.createMessageComponentCollector({
+      componentType: ComponentType.StringSelect,
+      time: 90000,
+    });
+    collector.on('collect', async (menuInteraction) => {
+      if (menuInteraction.user.id !== ctx.userId) {
+        return menuInteraction.reply({ content: '{emoji:circlex} هذه القائمة ليست لك.', ephemeral: true });
+      }
+      const value = menuInteraction.values[0];
+
+      if (value === 'house') {
+        const houses = (await db.getKV(`user_houses_${ctx.userId}`)) || 0;
+        if (houses <= 0) return menuInteraction.reply({ content: '{emoji:circlex} لم يعد لديك منزل لبيعه.', ephemeral: true });
+        const refund = 500000;
+        const wallet = (await getWallet(ctx.userId)) + refund;
+        await setWallet(ctx.userId, wallet);
+        await db.setKV(`user_houses_${ctx.userId}`, houses - 1);
+        return menuInteraction.reply({ content: `{emoji:circlecheck} تم بيع منزل مقابل **${fmt(refund)}**.`, ephemeral: true });
+      }
+
+      if (value.startsWith('company_')) {
+        const compId = parseInt(value.split('_')[1], 10);
+        const comp = companiesData.find((c) => c.id === compId);
+        if (!comp) return menuInteraction.reply({ content: '{emoji:circlex} شركة غير صالحة.', ephemeral: true });
+        const owner = await db.getKV(`company_${compId}_owner`);
+        if (owner !== ctx.userId) return menuInteraction.reply({ content: '{emoji:circlex} لم تعد تملك هذه الشركة.', ephemeral: true });
+        const refund = Math.floor(comp.price * 0.5);
+        const wallet = (await getWallet(ctx.userId)) + refund;
+        await setWallet(ctx.userId, wallet);
+        await db.deleteKV(`company_${compId}_owner`);
+        return menuInteraction.reply({ content: `{emoji:circlecheck} تم بيع شركة **${comp.name}** مقابل **${fmt(refund)}**.`, ephemeral: true });
+      }
+
+      if (value.startsWith('product_')) {
+        const productId = parseInt(value.split('_')[1], 10);
+        const product = PRODUCTS.find((p) => p.id === productId);
+        if (!product) return menuInteraction.reply({ content: '{emoji:circlex} منتج غير صالح.', ephemeral: true });
+        const products = await getUserProducts(ctx.userId);
+        const qty = products[productId] || 0;
+        if (qty <= 0) return menuInteraction.reply({ content: '{emoji:circlex} لم يعد لديك هذا المنتج.', ephemeral: true });
+
+        const { price } = await getProductPrice(productId);
+        const refund = Math.floor(price * SELL_RATE_PRODUCT);
+
+        products[productId] = qty - 1;
+        if (products[productId] <= 0) delete products[productId];
+        await setUserProducts(ctx.userId, products);
+
+        const wallet = (await getWallet(ctx.userId)) + refund;
+        await setWallet(ctx.userId, wallet);
+
+        return menuInteraction.reply({
+          content: `{emoji:circlecheck} تم بيع **${product.name}** مقابل **${fmt(refund)}** (65% من سعره الحالي).`,
+          ephemeral: true,
+        });
+      }
+
+      return menuInteraction.reply({ content: '{emoji:circlex} خيار غير معروف.', ephemeral: true });
     });
   } catch {
     /* تجاهل */
@@ -1271,50 +1736,23 @@ async function setCooldown(userId, key) {
   await db.setKV(`cooldown_${key}_${userId}`, Date.now());
 }
 
-async function playRiskGame(ctx, { key, cooldownMs, minAmount, winChance, winMultiplier, loseIsFullAmount, title }) {
-  const remaining = await checkCooldown(ctx.userId, key, cooldownMs);
-  if (remaining) {
-    await ctx.reply({ embeds: [cooldownEmbed(`يرجى الانتظار للعب ${title} مرة أخرى.`, remaining)] });
-    return { done: true };
-  }
+async function cmdGamble(ctx) {
+  const remaining = await checkCooldown(ctx.userId, 'gamble', 1800000);
+  if (remaining) return ctx.reply({ embeds: [cooldownEmbed('يرجى الانتظار للمقامرة مرة أخرى.', remaining)] });
 
   const wallet = await getWallet(ctx.userId);
   const { value: amount, error } = parseAmount(ctx.getString('amount'), wallet);
-  if (error) {
-    await ctx.reply({ embeds: [errorEmbed(error)] });
-    return { done: true };
-  }
-  if (amount < minAmount) {
-    await ctx.reply({ embeds: [errorEmbed(`الحد الأدنى للرهان هو ${fmt(minAmount)}.`)] });
-    return { done: true };
-  }
-  if (wallet < amount) {
-    await ctx.reply({ embeds: [errorEmbed('رصيد محفظتك لا يكفي لهذا الرهان.')] });
-    return { done: true };
-  }
+  if (error) return ctx.reply({ embeds: [errorEmbed(error)] });
+  if (amount < 10) return ctx.reply({ embeds: [errorEmbed('الحد الأدنى للرهان هو $10.')] });
+  if (wallet < amount) return ctx.reply({ embeds: [errorEmbed('رصيد محفظتك لا يكفي لهذا الرهان.')] });
 
-  const isWin = Math.random() < winChance;
-  const diff = isWin ? Math.floor(amount * winMultiplier) : loseIsFullAmount ? amount : Math.floor(amount * winMultiplier);
+  const isWin = Math.random() < 0.5;
+  const diff = isWin ? Math.floor(amount * 1.5) : amount;
   const newWallet = isWin ? wallet + diff : wallet - diff;
 
   await setWallet(ctx.userId, newWallet);
-  await setCooldown(ctx.userId, key);
+  await setCooldown(ctx.userId, 'gamble');
 
-  return { done: false, isWin, diff, newWallet, amount };
-}
-
-async function cmdGamble(ctx) {
-  const result = await playRiskGame(ctx, {
-    key: 'gamble',
-    cooldownMs: 1800000,
-    minAmount: 10,
-    winChance: 0.5,
-    winMultiplier: 1.5,
-    loseIsFullAmount: true,
-    title: 'المقامرة',
-  });
-  if (result.done) return;
-  const { isWin, diff, newWallet } = result;
   return ctx.reply({
     embeds: [
       new EmbedBuilder()
@@ -1544,144 +1982,182 @@ async function cmdTop(ctx) {
   return ctx.reply({ embeds: [embed] });
 }
 
-/* ---------------------- المساعدة التفاعلية ---------------------- */
+/* ============================================================
+ *  المساعدة (help) — تصميم احترافي مع سيلكت منيو للأقسام
+ * ============================================================ */
 
-function buildHelpEmbed(category) {
-  const embed = new EmbedBuilder().setColor(COLOR).setTimestamp();
+const HELP_MAIN_VALUE = 'main';
 
-  switch (category) {
-    case 'basics':
-      embed.setTitle('{emoji:gift} الأساسيات والمحفظة');
-      embed.setDescription('الأوامر الأساسية لإدارة أموالك اليومية.');
-      embed.addFields(
-        { name: '`/bank balance` — الرصيد', value: 'عرض رصيد محفظتك، الخزنة الآمنة، صافي ثروتك ورتبتك البنكية.' },
-        { name: '`/bank daily` — الهدية اليومية', value: 'تحصل على هدية عشوائية بين 1000$ و5000$ كل 12 ساعة.' },
-        { name: '`/bank weekly` — الهدية الأسبوعية', value: 'تحصل على هدية أسبوعية كبرى بين 20,000$ و50,000$ كل 7 أيام.' },
-        { name: '`/bank deposit <مبلغ>` — إيداع', value: 'إيداع أموال في الخزنة الآمنة (محمية من السرقة وتربح فوائد). المبلغ يمكن أن يكون رقماً أو `all`.' },
-        { name: '`/bank withdraw <مبلغ>` — سحب', value: 'سحب أموال من الخزنة الآمنة إلى محفظتك. المبلغ يمكن أن يكون رقماً أو `all`.' },
-        { name: '`/bank transfer <@شخص> <مبلغ>` — تحويل', value: 'تحويل أموال إلى شخص آخر مع خصم ضريبة 20%. لا يمكن التحويل أثناء وجود قرض نشط.' }
-      );
-      break;
-    case 'work':
-      embed.setTitle('{emoji:briefcase} العمل والدخل');
-      embed.setDescription('الأوامر المتعلقة بالراتب والوظائف والقروض.');
-      embed.addFields(
-        { name: '`/bank salary` — استلام الراتب', value: 'استلام الراتب الأساسي + دخل المنازل + أرباح الشركات (كل 6 ساعات).' },
-        { name: '`/bank job list` — قائمة الوظائف', value: 'عرض جميع الوظائف المتاحة مع تكاليفها ورواتبها، ويمكنك الشراء عبر الأزرار.' },
-        { name: '`/bank job buy <اسم أو رقم>`', value: 'شراء وظيفة محددة لزيادة راتبك الدوري.' },
-        { name: '`/bank job current`', value: 'عرض وظيفتك الحالية وراتبها.' },
-        { name: '`/bank loan` — قرض', value: 'الحصول على قرض فوري يصل إلى 500,000$ حسب رتبتك. يجب سداده خلال ساعة.' },
-        { name: '`/bank payloan` — سداد القرض', value: 'تسديد القرض القائم بالكامل إذا كان لديك رصيد كافٍ.' }
-      );
-      break;
-    case 'invest':
-      embed.setTitle('{emoji:chartpie} الاستثمار والعقارات');
-      embed.setDescription('تنمية ثروتك عبر الاستثمار وشراء العقارات والشركات.');
-      embed.addFields(
-        { name: '`/bank invest <مبلغ>` — استثمار', value: 'استثمار أموالك في البورصة (فرصة ربح أو خسارة 10%، كل ساعة).' },
-        { name: '`/bank trade <مبلغ>` — تداول', value: 'تداول العملات والأسهم (فرصة ربح/خسارة 15%، كل ساعة).' },
-        { name: '`/bank buy house` — شراء منزل', value: 'شراء منزل بـ 1,000,000$ (الحد الأقصى 5). يمنحك دخل إضافي 200,000$ كل راتب.' },
-        { name: '`/bank buy company <رقم>`', value: 'شراء شركة بـ 100,000,000$. تملك شركة يمنحك أرباح متقلبة كل راتب.' },
-        { name: '`/bank sell house` أو `company <رقم>`', value: 'بيع منزل أو شركة تملكها بنصف قيمتها الأصلية.' },
-        { name: '`/bank companies` — دليل الشركات', value: 'عرض جميع الشركات وحالة ملكيتها مع إمكانية الشراء عبر الأزرار.' }
-      );
-      break;
-    case 'games':
-      embed.setTitle('{emoji:playerplay} الألعاب المالية');
-      embed.setDescription('ألعاب حظ يمكنك المراهنة فيها برصيدك. جميعها تقبل مبلغاً رقمياً أو `all` للمراهنة بكل المحفظة.');
-      embed.addFields(
-        { name: '`/bank gamble <مبلغ>` — مقامرة', value: 'فرصة 50% لربح 1.5x المبلغ أو خسارته بالكامل (كل 30 دقيقة).' },
-        { name: '`/bank dice <مبلغ>` — نرد', value: 'رمي نرد: إذا كان الرقم ≥4 تربح 1.2x وإلا تخسر المبلغ (كل 30 دقيقة).' },
-        { name: '`/bank coinflip <مبلغ>` — عملة', value: 'رمي عملة: فرصة 50% لمضاعفة المبلغ أو خسارته (كل 15 دقيقة).' },
-        { name: '`/bank slots <مبلغ>` — سلوتس', value: 'ماكينة القمار: جوائز تصل إلى 10x عند تطابق 3 رموز (كل 20 دقيقة).' }
-      );
-      break;
-    case 'safety':
-      embed.setTitle('{emoji:shield} الأمان والاجتماعي');
-      embed.setDescription('أوامر الحماية، السرقة، وعرض الملف الشخصي والإنجازات.');
-      embed.addFields(
-        { name: '`/bank rob <@شخص>` — سرقة', value: 'محاولة سرقة عضو آخر. النجاح يمنحك 10-30% من محفظته، والفشل يغرمك (كل ساعتين).' },
-        { name: '`/bank protect <ساعات>` — حماية', value: 'شراء درع حماية يمنع سرقتك لمدة 1-3 ساعات (500,000$ للساعة).' },
-        { name: '`/bank profile` — الملف الشخصي', value: 'عرض كامل لبياناتك المالية، الرتبة، العقارات، القرض، والإنجازات.' },
-        { name: '`/bank achievements` — الإنجازات', value: 'قائمة إنجازاتك البنكية (10 إنجازات) مع تقدمك.' },
-        { name: '`/bank top` — الأثرياء', value: 'قائمة أغنى 6 أعضاء في السيرفر حسب المحفظة.' }
-      );
-      break;
-    default:
-      embed.setTitle('{emoji:briefcase} نظام البنك المتكامل');
-      embed.setDescription(
-        'مرحباً بك في دليل أوامر البنك! استخدم القائمة المنسدلة أدناه لتصفح الأقسام المختلفة.\n\n' +
-        'يمكنك استدعاء جميع الأوامر عبر `/bank` أو عبر بريفكس السيرفر متبوعاً بـ `bank`.\n' +
-        'تذكر دائماً: إيداع أموالك في الخزنة الآمنة يحميها من السرقة ويكسبك فوائد تلقائية!'
-      );
-      embed.setFooter({ text: 'اختر قسماً من القائمة لاستعراض الأوامر' });
-      break;
-  }
+const HELP_CATEGORIES = [
+  {
+    value: 'basics',
+    label: 'الأساسيات',
+    description: 'الرصيد، الهدايا، الإيداع والسحب والتحويل',
+    title: '{emoji:gift} الأوامر الأساسية',
+    intro: 'كل ما يخص إدارة رصيدك اليومي وخزنتك الآمنة.',
+    fields: [
+      { name: '`balance` — `رصيد`', value: 'عرض رصيد محفظتك وخزنتك الآمنة وصافي ثروتك ورتبتك البنكية.' },
+      { name: '`daily` — `يومي`', value: 'الحصول على هدية مالية عشوائية كل 12 ساعة.' },
+      { name: '`weekly` — `اسبوعي`', value: 'الحصول على هدية مالية كبرى كل أسبوع.' },
+      { name: '`deposit <مبلغ|all>` — `ايداع`', value: 'إيداع أموال في الخزنة الآمنة؛ تحميها من السرقة وتربحك فوائد تلقائية.' },
+      { name: '`withdraw <مبلغ|all>` — `سحب`', value: 'سحب أموال من الخزنة الآمنة إلى محفظتك مباشرة.' },
+      { name: '`transfer <شخص> <مبلغ|all>` — `تحويل`', value: 'تحويل مبلغ مالي لعضو آخر (يُخصم ضريبة تحويل 20%).' },
+    ],
+  },
+  {
+    value: 'work',
+    label: 'العمل والدخل',
+    description: 'الرواتب، الوظائف، والقروض البنكية',
+    title: '{emoji:briefcase} أوامر العمل والدخل',
+    intro: 'اعمل، اقترض، وطوّر مصادر دخلك الأساسية.',
+    fields: [
+      { name: '`salary` — `راتب`', value: 'استلام راتبك الوظيفي وأرباح عقاراتك وشركاتك دفعة واحدة (كل 6 ساعات).' },
+      { name: '`job list` — `وظيفة`', value: 'عرض قائمة الوظائف المتاحة والشراء عبر سيلكت منيو تفاعلية.' },
+      { name: '`job buy <اسم/رقم>`', value: 'شراء وظيفة جديدة مباشرة لزيادة راتبك.' },
+      { name: '`job current`', value: 'عرض وظيفتك الحالية وراتبها الشهري.' },
+      { name: '`loan` — `قرض`', value: 'أخذ قرض مالي فوري من البنك حسب رتبتك (يجب سداده خلال ساعة).' },
+      { name: '`payloan` — `سداد`', value: 'تسديد القرض الحالي المتبقي عليك بالكامل دفعة واحدة.' },
+    ],
+  },
+  {
+    value: 'invest',
+    label: 'الاستثمار والعقارات',
+    description: 'البورصة، المنازل، والشركات الاستثمارية',
+    title: '{emoji:chartpie} أوامر الاستثمار والعقارات',
+    intro: 'نمِّ ثروتك عبر الأسهم والعقارات والشركات.',
+    fields: [
+      { name: '`invest <مبلغ>` — `استثمار`', value: 'استثمار أموالك في البورصة بفرصة ربح/خسارة 10%.' },
+      { name: '`trade <مبلغ>` — `تداول`', value: 'تداول العملات والأسهم بفرصة ربح/خسارة 15%.' },
+      { name: '`buy house` — `شراء منزل`', value: 'شراء منزل (حتى 5 منازل) يمنحك دخلاً إضافياً مع كل راتب.' },
+      { name: '`buy company <رقم>`', value: 'شراء شركة استثمارية مباشرة تدر عليك أرباحاً ضخمة عند كل راتب.' },
+      { name: '`companies` — `شركات`', value: 'عرض قائمة الشركات المتاحة وحالتها، والشراء عبر سيلكت منيو.' },
+      { name: '`sell house|company` — `بيع`', value: 'بيع منزل أو شركة تملكها مباشرة مقابل نصف السعر.' },
+    ],
+  },
+  {
+    value: 'shop',
+    label: 'متجر الممتلكات الفاخرة',
+    description: 'شراء وبيع سيارات، يخوت، طائرات وغيرها',
+    title: '{emoji:crown} متجر الممتلكات الفاخرة',
+    intro: 'اقتنِ ممتلكات فاخرة برصيد أسعار متغير باستمرار!',
+    fields: [
+      { name: '`buy` — `شراء`', value: 'فتح متجر الممتلكات الفاخرة (دراجات، سيارات، يخوت، طائرات، جزر، قصور) عبر سيلكت منيو.' },
+      { name: '`prices` — `اسعار`', value: 'عرض الأسعار الحالية لكل منتجات المتجر (تتغير تلقائياً كل 30 دقيقة)، مع سيلكت منيو لتفاصيل كل منتج.' },
+      { name: '`sell` — `بيع`', value: 'بيع منتج تملكه من المتجر (أو منزل/شركة) عبر سيلكت منيو موحّدة لكل ممتلكاتك.' },
+      { name: '`assets` — `ممتلكات`', value: 'عرض جميع ممتلكاتك: المنازل، الشركات، ومنتجات المتجر الفاخر، بقيمتها الإجمالية.' },
+    ],
+  },
+  {
+    value: 'games',
+    label: 'ألعاب الحظ',
+    description: 'المقامرة، النرد، العملة، والسلوتس',
+    title: '{emoji:playerplay} ألعاب الحظ',
+    intro: 'جرّب حظك واربح أموالاً إضافية — أو خسرها!',
+    fields: [
+      { name: '`gamble <مبلغ|all>` — `مقامرة`', value: 'مقامرة بسيطة بفرصة فوز 50% وربح 1.5× المبلغ.' },
+      { name: '`dice <مبلغ|all>` — `نرد`', value: 'رمي نرد؛ اربح إن ظهر رقم 4 أو أعلى.' },
+      { name: '`coinflip <مبلغ|all>` — `عملة`', value: 'رمي عملة معدنية بفرصة فوز 50%.' },
+      { name: '`slots <مبلغ|all>` — `سلوتس`', value: 'ماكينة القمار؛ اجمع 3 رموز متطابقة للفوز بالجائزة الكبرى!' },
+    ],
+  },
+  {
+    value: 'social',
+    label: 'الأمان والاجتماعي',
+    description: 'السرقة، الحماية، الملف الشخصي، والمتصدرين',
+    title: '{emoji:shield} الأمان والاجتماعي',
+    intro: 'احمِ نفسك من السرقة، واستعرض ملفك وإنجازاتك.',
+    fields: [
+      { name: '`rob <شخص>` — `سرقة`', value: 'محاولة نهب رصيد عضو آخر (فرصة نجاح 50%، وغرامة إن فشلت).' },
+      { name: '`protect <ساعات>` — `حماية`', value: 'شراء درع حماية يحميك من السرقة لمدة تصل إلى 3 ساعات.' },
+      { name: '`profile [شخص]` — `بروفايل`', value: 'عرض ملفك الشخصي المالي الكامل، أو ملف أي عضو آخر مع صورته الرمزية.' },
+      { name: '`achievements` — `انجازات`', value: 'عرض إنجازاتك البنكية المفتوحة من أصل 12 إنجازاً.' },
+      { name: '`top` — `الأثرياء`', value: 'عرض قائمة أغنى الأعضاء في السيرفر.' },
+    ],
+  },
+];
 
-  return embed;
+function buildHelpMainEmbed() {
+  return new EmbedBuilder()
+    .setTitle('{emoji:briefcase} دليل نظام البنك الشامل')
+    .setDescription(
+      `مرحباً بك في **نظام البنك المتكامل** {emoji:gift}\n` +
+        `يقدم لك هذا النظام إدارة كاملة لأموالك: من الرصيد والودائع، إلى الوظائف والقروض، ` +
+        `مروراً بالاستثمار والعقارات والشركات، وصولاً إلى متجر الممتلكات الفاخرة وألعاب الحظ!\n\n` +
+        `{emoji:crown} يمكنك استخدام الأوامر عبر السلاش \`/bank\` أو عبر بريفكس السيرفر، مثال: \`بنك رصيد\` أو \`bank job buy 3\`.\n\n` +
+        `{emoji:chartpie} **اختر قسماً من القائمة أدناه** لعرض شرح مفصل لكل أمر فيه {emoji:playerplay}`
+    )
+    .addFields(
+      HELP_CATEGORIES.map((c) => ({
+        name: c.title,
+        value: c.description,
+        inline: true,
+      }))
+    )
+    .setColor(COLOR)
+    .setFooter({ text: 'نظام البنك — كل ما تحتاجه لبناء إمبراطوريتك المالية' })
+    .setTimestamp();
+}
+
+function buildHelpCategoryEmbed(category) {
+  return new EmbedBuilder()
+    .setTitle(category.title)
+    .setDescription(category.intro)
+    .addFields(category.fields)
+    .setColor(COLOR)
+    .setFooter({ text: 'اختر "القائمة الرئيسية" من القائمة أعلاه للعودة إلى نظرة عامة على كل الأقسام.' })
+    .setTimestamp();
+}
+
+function buildHelpMenu(selectedValue) {
+  const menu = new StringSelectMenuBuilder()
+    .setCustomId('bankhelp_menu')
+    .setPlaceholder('اختر قسماً لعرض أوامره بالتفصيل...')
+    .setMinValues(1)
+    .setMaxValues(1)
+    .addOptions(
+      [
+        { value: HELP_MAIN_VALUE, label: 'القائمة الرئيسية', description: 'نظرة عامة على كل أقسام نظام البنك' },
+        ...HELP_CATEGORIES.map((c) => ({ value: c.value, label: c.label, description: c.description })),
+      ].map((o) => ({ ...o, default: o.value === selectedValue }))
+    );
+  return new ActionRowBuilder().addComponents(menu);
 }
 
 async function cmdHelp(ctx) {
-  const initialCategory = 'main';
-  const embed = buildHelpEmbed(initialCategory);
+  const embed = buildHelpMainEmbed();
+  const row = buildHelpMenu(HELP_MAIN_VALUE);
 
-  const selectMenu = new StringSelectMenuBuilder()
-    .setCustomId(`bankhelp_${ctx.userId}`)
-    .setPlaceholder('اختر قسماً لعرض أوامره...')
-    .addOptions(
-      new StringSelectMenuOptionBuilder()
-        .setLabel('الأساسيات والمحفظة')
-        .setValue('basics')
-        .setEmoji('{emoji:gift}')
-        .setDescription('الرصيد، الهدايا، الإيداع، السحب، التحويل'),
-      new StringSelectMenuOptionBuilder()
-        .setLabel('العمل والدخل')
-        .setValue('work')
-        .setEmoji('{emoji:briefcase}')
-        .setDescription('الراتب، الوظائف، القروض'),
-      new StringSelectMenuOptionBuilder()
-        .setLabel('الاستثمار والعقارات')
-        .setValue('invest')
-        .setEmoji('{emoji:chartpie}')
-        .setDescription('الاستثمار، التداول، شراء وبيع العقارات والشركات'),
-      new StringSelectMenuOptionBuilder()
-        .setLabel('الألعاب المالية')
-        .setValue('games')
-        .setEmoji('{emoji:playerplay}')
-        .setDescription('المقامرة، النرد، العملة، السلوتس'),
-      new StringSelectMenuOptionBuilder()
-        .setLabel('الأمان والاجتماعي')
-        .setValue('safety')
-        .setEmoji('{emoji:shield}')
-        .setDescription('السرقة، الحماية، الملف الشخصي، الإنجازات، المتصدرين')
-    );
+  const sent = await ctx.reply({ embeds: [embed], components: [row] });
+  setupHelpMenu(ctx, sent);
+  return sent;
+}
 
-  const row = new ActionRowBuilder().addComponents(selectMenu);
+function setupHelpMenu(ctx, sentMessage) {
+  if (!sentMessage || !sentMessage.createMessageComponentCollector) return;
+  try {
+    const collector = sentMessage.createMessageComponentCollector({
+      componentType: ComponentType.StringSelect,
+      time: 180000,
+    });
+    collector.on('collect', async (menuInteraction) => {
+      if (menuInteraction.user.id !== ctx.userId) {
+        return menuInteraction.reply({ content: '{emoji:circlex} هذه القائمة ليست لك.', ephemeral: true });
+      }
+      const selected = menuInteraction.values[0];
+      const newRow = buildHelpMenu(selected);
 
-  let replyMessage;
-  if (ctx.isPrefix) {
-    replyMessage = await ctx.reply({ embeds: [embed], components: [row] });
-  } else {
-    await ctx.reply({ embeds: [embed], components: [row], fetchReply: true });
-    replyMessage = await ctx.raw.fetchReply();
+      if (selected === HELP_MAIN_VALUE) {
+        return menuInteraction.update({ embeds: [buildHelpMainEmbed()], components: [newRow] });
+      }
+
+      const category = HELP_CATEGORIES.find((c) => c.value === selected);
+      if (!category) return menuInteraction.reply({ content: '{emoji:circlex} قسم غير معروف.', ephemeral: true });
+
+      return menuInteraction.update({ embeds: [buildHelpCategoryEmbed(category)], components: [newRow] });
+    });
+  } catch {
+    /* تجاهل */
   }
-
-  const collector = replyMessage.createMessageComponentCollector({
-    filter: (i) => i.user.id === ctx.userId,
-    time: 300000, // 5 دقائق
-  });
-
-  collector.on('collect', async (menuInteraction) => {
-    const category = menuInteraction.values[0];
-    const newEmbed = buildHelpEmbed(category);
-    await menuInteraction.update({ embeds: [newEmbed], components: [row] });
-  });
-
-  collector.on('end', async () => {
-    try {
-      await replyMessage.edit({ components: [] });
-    } catch {}
-  });
 }
 
 /* ============================================================
