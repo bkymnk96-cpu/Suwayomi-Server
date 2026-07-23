@@ -24,6 +24,18 @@ module.exports = {
     const client = interaction.client;
 
 
+// Handle Autocomplete Interactions
+    if (interaction.isAutocomplete()) {
+      const command = client.commands.get(interaction.commandName);
+      if (command?.autocomplete) {
+        try {
+          await command.autocomplete(interaction);
+        } catch (e) {
+          console.error(`Autocomplete error [${interaction.commandName}]:`, e);
+        }
+      }
+      return;
+    }
 
     // Handle Slash Commands
     /*1*/
