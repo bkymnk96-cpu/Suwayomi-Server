@@ -22,6 +22,8 @@ const {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
+  StringSelectMenuBuilder,
+  StringSelectMenuOptionBuilder,
 } = require('discord.js');
 const db = require('../../database/db');
 
@@ -1513,7 +1515,7 @@ async function cmdProtect(ctx) {
   });
 }
 
-/* ---------------------- المتصدرين والمساعدة ---------------------- */
+/* ---------------------- المتصدرين ---------------------- */
 
 async function cmdTop(ctx) {
   const remaining = await checkCooldown(ctx.userId, 'top', 15000);
@@ -1542,36 +1544,144 @@ async function cmdTop(ctx) {
   return ctx.reply({ embeds: [embed] });
 }
 
-async function cmdHelp(ctx) {
-  const embed = new EmbedBuilder()
-    .setTitle('{emoji:briefcase} دليل نظام البنك')
-    .setDescription('يمكنك استخدام هذه الأوامر عبر السلاش `/bank` أو عبر بريفكس السيرفر متبوعاً بـ `bank`، مثال: `bank balance` أو `bank job buy 3`.')
-    .setColor(COLOR)
-    .addFields(
-      {
-        name: '{emoji:gift} الأساسيات',
-        value: '`balance` الرصيد | `daily` هدية يومية | `weekly` هدية أسبوعية | `deposit` `withdraw` الخزنة الآمنة | `transfer` تحويل',
-      },
-      {
-        name: '{emoji:briefcase} العمل والدخل',
-        value: '`salary` استلام الراتب | `job list/buy/current` الوظائف | `loan` `payloan` القروض',
-      },
-      {
-        name: '{emoji:chartpie} الاستثمار والعقارات',
-        value: '`invest` `trade` الاستثمار | `buy`/`sell house|company` العقارات والشركات | `companies` قائمة الشركات',
-      },
-      {
-        name: '{emoji:playerplay} الألعاب',
-        value: '`gamble` `dice` `coinflip` `slots` — كل الألعاب تقبل مبلغاً رقمياً أو كلمة "all"',
-      },
-      {
-        name: '{emoji:shield} الأمان والاجتماعي',
-        value: '`rob` السرقة | `protect` الحماية | `profile` `achievements` `top` الملف والإنجازات والمتصدرين',
-      }
-    )
-    .setFooter({ text: 'نصيحة: أودع أموالك في الخزنة الآمنة (deposit) لحمايتها من السرقة وكسب فوائد تلقائية!' });
+/* ---------------------- المساعدة التفاعلية ---------------------- */
 
-  return ctx.reply({ embeds: [embed] });
+function buildHelpEmbed(category) {
+  const embed = new EmbedBuilder().setColor(COLOR).setTimestamp();
+
+  switch (category) {
+    case 'basics':
+      embed.setTitle('{emoji:gift} الأساسيات والمحفظة');
+      embed.setDescription('الأوامر الأساسية لإدارة أموالك اليومية.');
+      embed.addFields(
+        { name: '`/bank balance` — الرصيد', value: 'عرض رصيد محفظتك، الخزنة الآمنة، صافي ثروتك ورتبتك البنكية.' },
+        { name: '`/bank daily` — الهدية اليومية', value: 'تحصل على هدية عشوائية بين 1000$ و5000$ كل 12 ساعة.' },
+        { name: '`/bank weekly` — الهدية الأسبوعية', value: 'تحصل على هدية أسبوعية كبرى بين 20,000$ و50,000$ كل 7 أيام.' },
+        { name: '`/bank deposit <مبلغ>` — إيداع', value: 'إيداع أموال في الخزنة الآمنة (محمية من السرقة وتربح فوائد). المبلغ يمكن أن يكون رقماً أو `all`.' },
+        { name: '`/bank withdraw <مبلغ>` — سحب', value: 'سحب أموال من الخزنة الآمنة إلى محفظتك. المبلغ يمكن أن يكون رقماً أو `all`.' },
+        { name: '`/bank transfer <@شخص> <مبلغ>` — تحويل', value: 'تحويل أموال إلى شخص آخر مع خصم ضريبة 20%. لا يمكن التحويل أثناء وجود قرض نشط.' }
+      );
+      break;
+    case 'work':
+      embed.setTitle('{emoji:briefcase} العمل والدخل');
+      embed.setDescription('الأوامر المتعلقة بالراتب والوظائف والقروض.');
+      embed.addFields(
+        { name: '`/bank salary` — استلام الراتب', value: 'استلام الراتب الأساسي + دخل المنازل + أرباح الشركات (كل 6 ساعات).' },
+        { name: '`/bank job list` — قائمة الوظائف', value: 'عرض جميع الوظائف المتاحة مع تكاليفها ورواتبها، ويمكنك الشراء عبر الأزرار.' },
+        { name: '`/bank job buy <اسم أو رقم>`', value: 'شراء وظيفة محددة لزيادة راتبك الدوري.' },
+        { name: '`/bank job current`', value: 'عرض وظيفتك الحالية وراتبها.' },
+        { name: '`/bank loan` — قرض', value: 'الحصول على قرض فوري يصل إلى 500,000$ حسب رتبتك. يجب سداده خلال ساعة.' },
+        { name: '`/bank payloan` — سداد القرض', value: 'تسديد القرض القائم بالكامل إذا كان لديك رصيد كافٍ.' }
+      );
+      break;
+    case 'invest':
+      embed.setTitle('{emoji:chartpie} الاستثمار والعقارات');
+      embed.setDescription('تنمية ثروتك عبر الاستثمار وشراء العقارات والشركات.');
+      embed.addFields(
+        { name: '`/bank invest <مبلغ>` — استثمار', value: 'استثمار أموالك في البورصة (فرصة ربح أو خسارة 10%، كل ساعة).' },
+        { name: '`/bank trade <مبلغ>` — تداول', value: 'تداول العملات والأسهم (فرصة ربح/خسارة 15%، كل ساعة).' },
+        { name: '`/bank buy house` — شراء منزل', value: 'شراء منزل بـ 1,000,000$ (الحد الأقصى 5). يمنحك دخل إضافي 200,000$ كل راتب.' },
+        { name: '`/bank buy company <رقم>`', value: 'شراء شركة بـ 100,000,000$. تملك شركة يمنحك أرباح متقلبة كل راتب.' },
+        { name: '`/bank sell house` أو `company <رقم>`', value: 'بيع منزل أو شركة تملكها بنصف قيمتها الأصلية.' },
+        { name: '`/bank companies` — دليل الشركات', value: 'عرض جميع الشركات وحالة ملكيتها مع إمكانية الشراء عبر الأزرار.' }
+      );
+      break;
+    case 'games':
+      embed.setTitle('{emoji:playerplay} الألعاب المالية');
+      embed.setDescription('ألعاب حظ يمكنك المراهنة فيها برصيدك. جميعها تقبل مبلغاً رقمياً أو `all` للمراهنة بكل المحفظة.');
+      embed.addFields(
+        { name: '`/bank gamble <مبلغ>` — مقامرة', value: 'فرصة 50% لربح 1.5x المبلغ أو خسارته بالكامل (كل 30 دقيقة).' },
+        { name: '`/bank dice <مبلغ>` — نرد', value: 'رمي نرد: إذا كان الرقم ≥4 تربح 1.2x وإلا تخسر المبلغ (كل 30 دقيقة).' },
+        { name: '`/bank coinflip <مبلغ>` — عملة', value: 'رمي عملة: فرصة 50% لمضاعفة المبلغ أو خسارته (كل 15 دقيقة).' },
+        { name: '`/bank slots <مبلغ>` — سلوتس', value: 'ماكينة القمار: جوائز تصل إلى 10x عند تطابق 3 رموز (كل 20 دقيقة).' }
+      );
+      break;
+    case 'safety':
+      embed.setTitle('{emoji:shield} الأمان والاجتماعي');
+      embed.setDescription('أوامر الحماية، السرقة، وعرض الملف الشخصي والإنجازات.');
+      embed.addFields(
+        { name: '`/bank rob <@شخص>` — سرقة', value: 'محاولة سرقة عضو آخر. النجاح يمنحك 10-30% من محفظته، والفشل يغرمك (كل ساعتين).' },
+        { name: '`/bank protect <ساعات>` — حماية', value: 'شراء درع حماية يمنع سرقتك لمدة 1-3 ساعات (500,000$ للساعة).' },
+        { name: '`/bank profile` — الملف الشخصي', value: 'عرض كامل لبياناتك المالية، الرتبة، العقارات، القرض، والإنجازات.' },
+        { name: '`/bank achievements` — الإنجازات', value: 'قائمة إنجازاتك البنكية (10 إنجازات) مع تقدمك.' },
+        { name: '`/bank top` — الأثرياء', value: 'قائمة أغنى 6 أعضاء في السيرفر حسب المحفظة.' }
+      );
+      break;
+    default:
+      embed.setTitle('{emoji:briefcase} نظام البنك المتكامل');
+      embed.setDescription(
+        'مرحباً بك في دليل أوامر البنك! استخدم القائمة المنسدلة أدناه لتصفح الأقسام المختلفة.\n\n' +
+        'يمكنك استدعاء جميع الأوامر عبر `/bank` أو عبر بريفكس السيرفر متبوعاً بـ `bank`.\n' +
+        'تذكر دائماً: إيداع أموالك في الخزنة الآمنة يحميها من السرقة ويكسبك فوائد تلقائية!'
+      );
+      embed.setFooter({ text: 'اختر قسماً من القائمة لاستعراض الأوامر' });
+      break;
+  }
+
+  return embed;
+}
+
+async function cmdHelp(ctx) {
+  const initialCategory = 'main';
+  const embed = buildHelpEmbed(initialCategory);
+
+  const selectMenu = new StringSelectMenuBuilder()
+    .setCustomId(`bankhelp_${ctx.userId}`)
+    .setPlaceholder('اختر قسماً لعرض أوامره...')
+    .addOptions(
+      new StringSelectMenuOptionBuilder()
+        .setLabel('الأساسيات والمحفظة')
+        .setValue('basics')
+        .setEmoji('{emoji:gift}')
+        .setDescription('الرصيد، الهدايا، الإيداع، السحب، التحويل'),
+      new StringSelectMenuOptionBuilder()
+        .setLabel('العمل والدخل')
+        .setValue('work')
+        .setEmoji('{emoji:briefcase}')
+        .setDescription('الراتب، الوظائف، القروض'),
+      new StringSelectMenuOptionBuilder()
+        .setLabel('الاستثمار والعقارات')
+        .setValue('invest')
+        .setEmoji('{emoji:chartpie}')
+        .setDescription('الاستثمار، التداول، شراء وبيع العقارات والشركات'),
+      new StringSelectMenuOptionBuilder()
+        .setLabel('الألعاب المالية')
+        .setValue('games')
+        .setEmoji('{emoji:playerplay}')
+        .setDescription('المقامرة، النرد، العملة، السلوتس'),
+      new StringSelectMenuOptionBuilder()
+        .setLabel('الأمان والاجتماعي')
+        .setValue('safety')
+        .setEmoji('{emoji:shield}')
+        .setDescription('السرقة، الحماية، الملف الشخصي، الإنجازات، المتصدرين')
+    );
+
+  const row = new ActionRowBuilder().addComponents(selectMenu);
+
+  let replyMessage;
+  if (ctx.isPrefix) {
+    replyMessage = await ctx.reply({ embeds: [embed], components: [row] });
+  } else {
+    await ctx.reply({ embeds: [embed], components: [row], fetchReply: true });
+    replyMessage = await ctx.raw.fetchReply();
+  }
+
+  const collector = replyMessage.createMessageComponentCollector({
+    filter: (i) => i.user.id === ctx.userId,
+    time: 300000, // 5 دقائق
+  });
+
+  collector.on('collect', async (menuInteraction) => {
+    const category = menuInteraction.values[0];
+    const newEmbed = buildHelpEmbed(category);
+    await menuInteraction.update({ embeds: [newEmbed], components: [row] });
+  });
+
+  collector.on('end', async () => {
+    try {
+      await replyMessage.edit({ components: [] });
+    } catch {}
+  });
 }
 
 /* ============================================================
