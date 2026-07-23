@@ -2,6 +2,35 @@ const { SlashCommandBuilder, PermissionsBitField } = require('discord.js');
 const db = require('../../database/db');
 const { success, error } = require('../../utils/embeds');
 
+// الاختصارات الافتراضية لجميع أوامر البنك
+const DEFAULT_BANK_ALIASES = [
+  { shortcut: 'رصيد', command: 'bank balance' },
+  { shortcut: 'يومي', command: 'bank daily' },
+  { shortcut: 'اسبوعي', command: 'bank weekly' },
+  { shortcut: 'ايداع', command: 'bank deposit' },
+  { shortcut: 'سحب', command: 'bank withdraw' },
+  { shortcut: 'تحويل', command: 'bank transfer' },
+  { shortcut: 'راتب', command: 'bank salary' },
+  { shortcut: 'وظيفة', command: 'bank job' },
+  { shortcut: 'قرض', command: 'bank loan' },
+  { shortcut: 'سداد', command: 'bank payloan' },
+  { shortcut: 'استثمار', command: 'bank invest' },
+  { shortcut: 'تداول', command: 'bank trade' },
+  { shortcut: 'شراء', command: 'bank buy' },
+  { shortcut: 'بيع', command: 'bank sell' },
+  { shortcut: 'شركات', command: 'bank companies' },
+  { shortcut: 'مقامرة', command: 'bank gamble' },
+  { shortcut: 'نرد', command: 'bank dice' },
+  { shortcut: 'عملة', command: 'bank coinflip' },
+  { shortcut: 'سلوتس', command: 'bank slots' },
+  { shortcut: 'سرقة', command: 'bank rob' },
+  { shortcut: 'حماية', command: 'bank protect' },
+  { shortcut: 'ملف', command: 'bank profile' },
+  { shortcut: 'انجازات', command: 'bank achievements' },
+  { shortcut: 'الاثرياء', command: 'bank top' },
+  { shortcut: 'مساعدة', command: 'bank help' },
+];
+
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('alias')
@@ -24,6 +53,10 @@ module.exports = {
     .addSubcommand(sub => 
       sub.setName('list')
       .setDescription('عرض قائمة الاختصارات الحالية')
+    )
+    .addSubcommand(sub =>
+      sub.setName('defaults')
+      .setDescription('إضافة جميع اختصارات البنك الافتراضية دفعة واحدة (إن لم تكن موجودة)')
     ),
 
   async autocomplete(interaction) {
@@ -32,7 +65,6 @@ module.exports = {
       const commandsList = [];
 
       for (const cmd of interaction.client.commands.values()) {
-        // استخدام toJSON() للحصول على البيانات المسلسلة الصحيحة
         const serialized = cmd.data.toJSON();
         const base = serialized.name;
         commandsList.push({ name: base, value: base });
@@ -90,11 +122,43 @@ module.exports = {
     if (sub === 'list') {
       const aliases = db.getAliases(guildId);
       if (!aliases.length) {
-        return interaction.reply({ embeds: [error(`لا توجد اختصارات معدة في هذا السيرفر.`)], flags: ['Ephemeral'] });
+        return interaction.reply({ embeds: [error(`لا توجد اختصارات معدة في هذا السيرفر. استخدم \`/alias defaults\` لإضافة اختصارات البنك الافتراضية.`)], flags: ['Ephemeral'] });
       }
 
       const listStr = aliases.map(a => `**${a.shortcut}** ➔ \`${a.command}\``).join('\n');
       return interaction.reply({ embeds: [success(`قائمة الاختصارات`, listStr)] });
+    }
+
+    if (sub === 'defaults') {
+      const existingAliases = db.getAliases(guildId) || [];
+      const added = [];
+      const skipped = [];
+
+      for (const def of DEFAULT_BANK_ALIASES) {
+        const exists = existingAliases.some(a => a.shortcut === def.shortcut);
+        if (exists) {
+          skipped.push(def.shortcut);
+          continue;
+        }
+        // التحقق من وجود الأمر الأساسي
+        const baseCommandName = def.command.trim().split(/ +/)[0].toLowerCase();
+        const baseCmd = interaction.client.commands.get(baseCommandName);
+        if (!baseCmd) {
+          continue; // تجاهل إذا لم يوجد الأمر (يفترض وجود bank)
+        }
+        db.addAlias(guildId, def.shortcut, def.command);
+        added.push(def.shortcut);
+      }
+
+      if (added.length === 0 && skipped.length === 0) {
+        return interaction.reply({ embeds: [error('لم يتم إضافة أي اختصار. تأكد من وجود أوامر البنك.')], flags: ['Ephemeral'] });
+      }
+
+      let description = `تمت إضافة **${added.length}** اختصارات افتراضية بنجاح.\n`;
+      if (skipped.length > 0) {
+        description += `تم تجاهل **${skipped.length}** اختصار لأنها موجودة مسبقاً (${skipped.join(', ')}).`;
+      }
+      return interaction.reply({ embeds: [success('الاختصارات الافتراضية', description)] });
     }
   }
 };
