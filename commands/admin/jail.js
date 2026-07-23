@@ -64,7 +64,6 @@ module.exports = {
     const guild = interaction.guild;
 
     if (sub === 'setup') {
-      // فقط الأدمن يمكنه إعداد النظام
       if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
         return interaction.reply({ embeds: [error('فقط الأعضاء الذين لديهم صلاحية مدير (Administrator) يمكنهم إعداد نظام السجن.')], flags: ['Ephemeral'] });
       }
@@ -78,7 +77,7 @@ module.exports = {
         return interaction.reply({ embeds: [error('الرجاء تحديد رتبة السجن والروم بشكل صحيح.')], flags: ['Ephemeral'] });
       }
 
-      // تخزين الإعدادات مع رتبة الموظفين (قد تكون null)
+      // حفظ الإعدادات
       db.setJailSettings(
         guild.id,
         jailRole.id,
@@ -87,31 +86,57 @@ module.exports = {
         staffRole ? staffRole.id : null
       );
 
+      // إعداد صلاحيات رتبة السجن على جميع القنوات (مرة واحدة)
+      try {
+        const channels = await guild.channels.fetch();
+        const jailChannelId = channel.id;
+
+        for (const [, ch] of channels) {
+          if (ch.id === jailChannelId) {
+            // قناة السجن: السماح بالرؤية والكتابة
+            await ch.permissionOverwrites.edit(jailRole.id, {
+              ViewChannel: true,
+              SendMessages: true,
+              ReadMessageHistory: true
+            }).catch(() => null);
+          } else {
+            // باقي القنوات: منع الرؤية والكتابة والاتصال
+            await ch.permissionOverwrites.edit(jailRole.id, {
+              ViewChannel: false,
+              SendMessages: false,
+              Connect: false,
+              ReadMessageHistory: false
+            }).catch(() => null);
+          }
+        }
+      } catch (permErr) {
+        console.error('Failed to set jail role permissions on channels:', permErr);
+      }
+
       return interaction.reply({
         embeds: [success(`تم إعداد نظام السجن بنجاح\n\n**رتبة السجن** <@&${jailRole.id}>\n**روم السجن** <#${channel.id}>\n**روم الاستدعاء** ${staffVoice ? `<#${staffVoice.id}>` : 'غير محدد'}\n**رتبة مسؤولي السجن** ${staffRole ? `<@&${staffRole.id}>` : 'غير محددة (المديرين فقط)'}`)]
       });
     }
 
-    // جلب الإعدادات
+    // باقي الأوامر تحتاج إعدادات
     const settings = db.getJailSettings(guild.id);
     if (!settings || !settings.jailRoleId || !settings.jailChannelId) {
       return interaction.reply({ embeds: [error('يرجى إعداد نظام السجن أولاً باستخدام `/jail setup`')], flags: ['Ephemeral'] });
     }
 
-    // التحقق من الصلاحية: أدمن أو لديه رتبة مسؤولي السجن
+    // صلاحية الاستخدام
     const hasAdmin = interaction.member.permissions.has(PermissionFlagsBits.Administrator);
     const hasStaffRole = settings.staffRoleId && interaction.member.roles.cache.has(settings.staffRoleId);
     if (!hasAdmin && !hasStaffRole) {
       return interaction.reply({ embeds: [error('لا تملك الصلاحية لاستخدام أوامر السجن. يجب أن تكون لديك صلاحية مدير (Administrator) أو رتبة مسؤولي السجن.')], flags: ['Ephemeral'] });
     }
 
-    // منع المسجون حتى لو كان لديه صلاحية
+    // منع المسجون من استخدام الأوامر
     const executorIsJailed = db.getJailedUser(interaction.user.id, guild.id) || interaction.member.roles.cache.has(settings.jailRoleId);
     if (executorIsJailed) {
       return interaction.reply({ embeds: [error('لا يمكنك استخدام أوامر السجن أثناء وجودك في السجن.')], flags: ['Ephemeral'] });
     }
 
-    // تحديد العضو المستهدف
     let targetUserId = interaction.options.getUser('user')?.id || fakeUser;
     if (!targetUserId) {
       return interaction.reply({ embeds: [error('يرجى تحديد العضو المطلوب.')], flags: ['Ephemeral'] });
@@ -122,7 +147,6 @@ module.exports = {
       return interaction.reply({ embeds: [error('العضو غير موجود في السيرفر')], flags: ['Ephemeral'] });
     }
 
-    // ---- الأوامر الفرعية ----
     if (sub === 'add') {
       if (targetMember.id === interaction.user.id) {
         return interaction.reply({ embeds: [error('لا يمكنك سجن نفسك')], flags: ['Ephemeral'] });
@@ -142,6 +166,7 @@ module.exports = {
 
       db.addJailedUser(targetMember.id, guild.id, JSON.stringify(originalRoles));
 
+      // فقط إعطاء رتبة السجن (الصلاحيات مسبقة الضبط على الرتبة نفسها)
       try {
         await targetMember.roles.set([settings.jailRoleId], reason);
       } catch (err) {
@@ -149,34 +174,7 @@ module.exports = {
         return interaction.reply({ embeds: [error('فشل في إزالة رتب العضو أو إعطائه رتبة السجن تأكد من صلاحيات البوت وترتيب رتبته')], flags: ['Ephemeral'] });
       }
 
-      // إخفاء جميع القنوات وإظهار روم السجن فقط
-      try {
-        const channels = await guild.channels.fetch();
-        const jailChannelId = settings.jailChannelId;
-
-        const permissionUpdates = channels.map(async (channel) => {
-          if (channel.id === jailChannelId) {
-            await channel.permissionOverwrites.edit(targetMember.id, {
-              ViewChannel: true,
-              SendMessages: true,
-              ReadMessageHistory: true,
-              Connect: false
-            }).catch(() => null);
-          } else {
-            await channel.permissionOverwrites.edit(targetMember.id, {
-              ViewChannel: false,
-              SendMessages: false,
-              Connect: false,
-              ReadMessageHistory: false
-            }).catch(() => null);
-          }
-        });
-
-        await Promise.all(permissionUpdates);
-      } catch (permErr) {
-        console.error('Failed to update channel permissions for jailed user:', permErr);
-      }
-
+      // إشعار في روم السجن
       const jailChannel = guild.channels.cache.get(settings.jailChannelId);
       if (jailChannel) {
         jailChannel.send({
@@ -213,7 +211,7 @@ module.exports = {
         await targetMember.roles.remove(settings.jailRoleId).catch(() => null);
       }
 
-      // حذف صلاحيات القنوات المخصصة للعضو
+      // حذف أي صلاحيات فردية قديمة للعضو (من النظام السابق) لا تؤثر على الرتبة
       try {
         const channels = await guild.channels.fetch();
         const removalPromises = channels.map(channel =>
