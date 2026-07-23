@@ -154,7 +154,7 @@ module.exports = {
           new EmbedBuilder()
             .setTitle('{emoji:briefcase} الحساب البنكي')
             .setDescription(`مرحباً <@${userId}>، إليك رصيدك المالي الحالي:\n\n{emoji:gift} **الرصيد الكلي:** \`$${userBalance.toLocaleString()}\``)
-            .setColor(0x8C52FF)
+            .setColor(0xFFD700)
             .setTimestamp()
         ]
       });
@@ -264,7 +264,7 @@ module.exports = {
               { name: '{emoji:briefcase} أرباح الشركات المملوكة', value: `$${companyIncome.toLocaleString()}`, inline: true },
               { name: '{emoji:chartpie} مجموع الدخل المودع', value: `$${totalIncome.toLocaleString()}`, inline: false }
             )
-            .setColor(0x00FF00)
+            .setColor(0xFFD700)
             .setFooter({ text: `رصيدك الحالي: $${userBalance.toLocaleString()}` })
         ]
       });
@@ -277,7 +277,7 @@ module.exports = {
         const embed = new EmbedBuilder()
           .setTitle('{emoji:briefcase} قائمة الوظائف المتاحة')
           .setDescription('شراء الوظائف ذات التكلفة الأعلى يمنحك راتباً يومياً أكبر!')
-          .setColor(0x8C52FF);
+          .setColor(0xFFD700);
 
         for (const job of jobTitles) {
           embed.addFields({ name: `{emoji:briefcase} وظيفة: ${job.name}`, value: `{emoji:gift} التكلفة: **$${job.cost.toLocaleString()}** | {emoji:chartpie} الراتب اليومي: **$${job.salary.toLocaleString()}**` });
@@ -485,7 +485,7 @@ module.exports = {
       const embed = new EmbedBuilder()
         .setTitle('{emoji:briefcase} دليل الشركات الاستثمارية')
         .setDescription('تمنحك الشركات دخلاً هائلاً ولكن بتكلفة شراء عالية!')
-        .setColor(0x8C52FF);
+        .setColor(0xFFD700);
 
       for (const comp of companiesData) {
         const owner = await db.getKV(`company_${comp.id}_owner`);
