@@ -32,13 +32,13 @@ module.exports = {
       const commandsList = [];
 
       for (const cmd of interaction.client.commands.values()) {
-        const base = cmd.data.name;
-        // الأمر الأساسي
+        // استخدام toJSON() للحصول على البيانات المسلسلة الصحيحة
+        const serialized = cmd.data.toJSON();
+        const base = serialized.name;
         commandsList.push({ name: base, value: base });
 
-        // الأوامر الفرعية والمجموعات
-        if (cmd.data.options) {
-          for (const opt of cmd.data.options) {
+        if (serialized.options) {
+          for (const opt of serialized.options) {
             if (opt.type === 1) { // SUB_COMMAND
               commandsList.push({ name: `${base} ${opt.name}`, value: `${base} ${opt.name}` });
             } else if (opt.type === 2) { // SUB_COMMAND_GROUP
