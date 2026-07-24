@@ -473,6 +473,52 @@ const data = new SlashCommandBuilder()
             opt.setName('amount').setDescription('المبلغ أو "all"').setRequired(true)
           )
       )
+      .addSubcommand((sub) =>
+        sub
+          .setName('roulette')
+          .setDescription('روليت الكازينو — راهن على لون واربح حتى 14 ضعف مبلغك')
+          .addStringOption((opt) =>
+            opt
+              .setName('bet')
+              .setDescription('اللون الذي تراهن عليه')
+              .setRequired(true)
+              .addChoices(
+                { name: 'أحمر (2×)', value: 'red' },
+                { name: 'أسود (2×)', value: 'black' },
+                { name: 'أخضر (14×)', value: 'green' }
+              )
+          )
+          .addStringOption((opt) =>
+            opt.setName('amount').setDescription('المبلغ أو "all"').setRequired(true)
+          )
+      )
+      .addSubcommand((sub) =>
+        sub
+          .setName('rps')
+          .setDescription('حجر ورقة مقص ضد البوت')
+          .addStringOption((opt) =>
+            opt
+              .setName('choice')
+              .setDescription('اختيارك')
+              .setRequired(true)
+              .addChoices(
+                { name: 'حجر', value: 'rock' },
+                { name: 'ورقة', value: 'paper' },
+                { name: 'مقص', value: 'scissors' }
+              )
+          )
+          .addStringOption((opt) =>
+            opt.setName('amount').setDescription('المبلغ أو "all"').setRequired(true)
+          )
+      )
+      .addSubcommand((sub) =>
+        sub
+          .setName('highcard')
+          .setDescription('سحب الورقة الأعلى — أنت ضد البوت، الأعلى يفوز')
+          .addStringOption((opt) =>
+            opt.setName('amount').setDescription('المبلغ أو "all"').setRequired(true)
+          )
+      )
   )
   .addSubcommand((sub) =>
     sub
@@ -515,6 +561,9 @@ const PREFIX_SPECS = {
   dice: [{ name: 'amount', type: 'string' }],
   coinflip: [{ name: 'amount', type: 'string' }],
   slots: [{ name: 'amount', type: 'string' }],
+  roulette: [{ name: 'bet', type: 'string' }, { name: 'amount', type: 'string' }],
+  rps: [{ name: 'choice', type: 'string' }, { name: 'amount', type: 'string' }],
+  highcard: [{ name: 'amount', type: 'string' }],
   rob: [{ name: 'user', type: 'user' }],
   protect: [{ name: 'hours', type: 'string' }],
   profile: [{ name: 'user', type: 'user' }],
@@ -548,6 +597,11 @@ const SUBCOMMAND_ALIASES = {
   نرد: 'dice',
   عملة: 'coinflip',
   سلوتس: 'slots',
+  روليت: 'roulette',
+  حجرورقةمقص: 'rps',
+  حجر: 'rps',
+  ورقةاعلى: 'highcard',
+  ورقة: 'highcard',
   سرقة: 'rob',
   نهب: 'rob',
   حماية: 'protect',
@@ -560,8 +614,19 @@ const SUBCOMMAND_ALIASES = {
   مساعدة: 'help',
 };
 
+// أسماء الأمر الأساسي نفسه — تُستخدم لتفادي مشكلة أنظمة الاختصارات (alias) التي قد
+// تُمرر اسم الأمر الأساسي "bank" كأول عنصر ضمن args بدلاً من حذفه قبل الاستدعاء
+const OWN_COMMAND_NAMES = ['bank', 'بنك', 'بانك'];
+
 async function buildCtxFromMessage(message, argsRaw) {
   const args = [...argsRaw];
+
+  // إذا مرّر معالج الاختصارات اسم الأمر الأساسي ضمن args (مثال: ['bank','gamble','100']
+  // بدل ['gamble','100'])، نتجاهله هنا حتى لا يُفسَّر خطأً كأمر فرعي غير معروف.
+  while (args.length && OWN_COMMAND_NAMES.includes(String(args[0]).toLowerCase())) {
+    args.shift();
+  }
+
   let subRaw = (args.shift() || '').toLowerCase();
   const subcommand = SUBCOMMAND_ALIASES[subRaw] || subRaw;
   const spec = PREFIX_SPECS[subcommand] || [];
@@ -713,6 +778,12 @@ async function runBank(ctx) {
       return cmdCoinflip(ctx);
     case 'slots':
       return cmdSlots(ctx);
+    case 'roulette':
+      return cmdRoulette(ctx);
+    case 'rps':
+      return cmdRPS(ctx);
+    case 'highcard':
+      return cmdHighCard(ctx);
     case 'rob':
       return cmdRob(ctx);
     case 'protect':
@@ -1884,6 +1955,157 @@ async function cmdSlots(ctx) {
   return ctx.reply({ embeds: [embed] });
 }
 
+async function cmdRoulette(ctx) {
+  const remaining = await checkCooldown(ctx.userId, 'roulette', 1200000);
+  if (remaining) return ctx.reply({ embeds: [cooldownEmbed('يرجى الانتظار للعب الروليت مرة أخرى.', remaining)] });
+
+  const bet = ctx.getString('bet');
+  if (!['red', 'black', 'green'].includes(bet)) {
+    return ctx.reply({ embeds: [errorEmbed('يجب تحديد لون صحيح للرهان: red / black / green (أو أحمر / أسود / أخضر).')] });
+  }
+
+  const wallet = await getWallet(ctx.userId);
+  const { value: amount, error } = parseAmount(ctx.getString('amount'), wallet);
+  if (error) return ctx.reply({ embeds: [errorEmbed(error)] });
+  if (amount < 20) return ctx.reply({ embeds: [errorEmbed('الحد الأدنى للرهان هو $20.')] });
+  if (wallet < amount) return ctx.reply({ embeds: [errorEmbed('رصيد محفظتك لا يكفي للعب الروليت.')] });
+
+  const n = Math.floor(Math.random() * 37); // 0-36
+  const resultColor = n === 0 ? 'green' : n % 2 === 1 ? 'red' : 'black';
+  const colorNames = { red: 'أحمر', black: 'أسود', green: 'أخضر' };
+  const isWin = bet === resultColor;
+  const multiplier = resultColor === 'green' ? 14 : 2;
+  const diff = isWin ? amount * (multiplier - 1) : amount;
+  const newWallet = isWin ? wallet + diff : wallet - diff;
+
+  await setWallet(ctx.userId, newWallet);
+  await setCooldown(ctx.userId, 'roulette');
+
+  return ctx.reply({
+    embeds: [
+      new EmbedBuilder()
+        .setDescription(
+          `{emoji:playerplay} دارت الكرة واستقرت على الرقم **${n}** (${colorNames[resultColor]})!\n\n${
+            isWin
+              ? `{emoji:confetti} راهنت على **${colorNames[bet]}** وفزت! ربحت **${fmt(diff)}**.`
+              : `{emoji:circlex} راهنت على **${colorNames[bet]}** وخسرت **${fmt(diff)}**.`
+          }\nرصيد محفظتك الحالي: **${fmt(newWallet)}**.`
+        )
+        .setColor(isWin ? COLOR_WIN : COLOR_ERROR),
+    ],
+  });
+}
+
+async function cmdRPS(ctx) {
+  const remaining = await checkCooldown(ctx.userId, 'rps', 900000);
+  if (remaining) return ctx.reply({ embeds: [cooldownEmbed('يرجى الانتظار للعب حجر ورقة مقص مرة أخرى.', remaining)] });
+
+  const choice = ctx.getString('choice');
+  if (!['rock', 'paper', 'scissors'].includes(choice)) {
+    return ctx.reply({ embeds: [errorEmbed('يجب اختيار: rock / paper / scissors (أو حجر / ورقة / مقص).')] });
+  }
+
+  const wallet = await getWallet(ctx.userId);
+  const { value: amount, error } = parseAmount(ctx.getString('amount'), wallet);
+  if (error) return ctx.reply({ embeds: [errorEmbed(error)] });
+  if (amount < 10) return ctx.reply({ embeds: [errorEmbed('الحد الأدنى للرهان هو $10.')] });
+  if (wallet < amount) return ctx.reply({ embeds: [errorEmbed('رصيد محفظتك لا يكفي للعب.')] });
+
+  const options = ['rock', 'paper', 'scissors'];
+  const botChoice = options[Math.floor(Math.random() * 3)];
+  const names = { rock: 'حجر', paper: 'ورقة', scissors: 'مقص' };
+
+  let outcome; // 'win' | 'lose' | 'tie'
+  if (choice === botChoice) outcome = 'tie';
+  else if (
+    (choice === 'rock' && botChoice === 'scissors') ||
+    (choice === 'paper' && botChoice === 'rock') ||
+    (choice === 'scissors' && botChoice === 'paper')
+  ) {
+    outcome = 'win';
+  } else {
+    outcome = 'lose';
+  }
+
+  let diff = 0;
+  let newWallet = wallet;
+  if (outcome === 'win') {
+    diff = Math.floor(amount * 0.8);
+    newWallet = wallet + diff;
+  } else if (outcome === 'lose') {
+    diff = amount;
+    newWallet = wallet - diff;
+  }
+  await setWallet(ctx.userId, newWallet);
+  await setCooldown(ctx.userId, 'rps');
+
+  const resultText =
+    outcome === 'win'
+      ? `{emoji:confetti} فزت! ربحت **${fmt(diff)}**.`
+      : outcome === 'lose'
+      ? `{emoji:circlex} خسرت! فقدت **${fmt(diff)}**.`
+      : '{emoji:clock} تعادل! لم يتغير رصيدك.';
+
+  return ctx.reply({
+    embeds: [
+      new EmbedBuilder()
+        .setDescription(
+          `{emoji:playerplay} أنت: **${names[choice]}** — البوت: **${names[botChoice]}**\n\n${resultText}\nرصيد محفظتك الحالي: **${fmt(newWallet)}**.`
+        )
+        .setColor(outcome === 'win' ? COLOR_WIN : outcome === 'lose' ? COLOR_ERROR : COLOR),
+    ],
+  });
+}
+
+async function cmdHighCard(ctx) {
+  const remaining = await checkCooldown(ctx.userId, 'highcard', 1200000);
+  if (remaining) return ctx.reply({ embeds: [cooldownEmbed('يرجى الانتظار للعب سحب الورقة مرة أخرى.', remaining)] });
+
+  const wallet = await getWallet(ctx.userId);
+  const { value: amount, error } = parseAmount(ctx.getString('amount'), wallet);
+  if (error) return ctx.reply({ embeds: [errorEmbed(error)] });
+  if (amount < 15) return ctx.reply({ embeds: [errorEmbed('الحد الأدنى للرهان هو $15.')] });
+  if (wallet < amount) return ctx.reply({ embeds: [errorEmbed('رصيد محفظتك لا يكفي للعب.')] });
+
+  const cardNames = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
+  const myCard = Math.floor(Math.random() * 13) + 1;
+  const botCard = Math.floor(Math.random() * 13) + 1;
+
+  let outcome;
+  if (myCard === botCard) outcome = 'tie';
+  else if (myCard > botCard) outcome = 'win';
+  else outcome = 'lose';
+
+  let diff = 0;
+  let newWallet = wallet;
+  if (outcome === 'win') {
+    diff = Math.floor(amount * 1.5);
+    newWallet = wallet + diff;
+  } else if (outcome === 'lose') {
+    diff = amount;
+    newWallet = wallet - diff;
+  }
+  await setWallet(ctx.userId, newWallet);
+  await setCooldown(ctx.userId, 'highcard');
+
+  const resultText =
+    outcome === 'win'
+      ? `{emoji:confetti} ورقتك أعلى! فزت **${fmt(diff)}**.`
+      : outcome === 'lose'
+      ? `{emoji:circlex} ورقة البوت أعلى! خسرت **${fmt(diff)}**.`
+      : '{emoji:clock} تعادل! تم استرجاع مبلغك بالكامل.';
+
+  return ctx.reply({
+    embeds: [
+      new EmbedBuilder()
+        .setDescription(
+          `{emoji:playerplay} ورقتك: **${cardNames[myCard - 1]}** — ورقة البوت: **${cardNames[botCard - 1]}**\n\n${resultText}\nرصيد محفظتك الحالي: **${fmt(newWallet)}**.`
+        )
+        .setColor(outcome === 'win' ? COLOR_WIN : outcome === 'lose' ? COLOR_ERROR : COLOR),
+    ],
+  });
+}
+
 /* ---------------------- السرقة والحماية ---------------------- */
 
 async function cmdRob(ctx) {
@@ -2001,7 +2223,7 @@ const HELP_CATEGORIES = [
     title: '{emoji:gift} الأوامر الأساسية',
     intro: 'كل ما يخص إدارة رصيدك اليومي وخزنتك الآمنة.',
     fields: [
-      { name: '`balance` — `فلوسي`', value: 'عرض رصيد محفظتك وخزنتك الآمنة وصافي ثروتك ورتبتك البنكية.' },
+      { name: '`balance` — `رصيد`', value: 'عرض رصيد محفظتك وخزنتك الآمنة وصافي ثروتك ورتبتك البنكية.' },
       { name: '`daily` — `يومي`', value: 'الحصول على هدية مالية عشوائية كل 12 ساعة.' },
       { name: '`weekly` — `اسبوعي`', value: 'الحصول على هدية مالية كبرى كل أسبوع.' },
       { name: '`deposit <مبلغ|all>` — `ايداع`', value: 'إيداع أموال في الخزنة الآمنة؛ تحميها من السرقة وتربحك فوائد تلقائية.' },
@@ -2063,6 +2285,9 @@ const HELP_CATEGORIES = [
       { name: '`dice <مبلغ|all>` — `نرد`', value: 'رمي نرد؛ اربح إن ظهر رقم 4 أو أعلى.' },
       { name: '`coinflip <مبلغ|all>` — `عملة`', value: 'رمي عملة معدنية بفرصة فوز 50%.' },
       { name: '`slots <مبلغ|all>` — `سلوتس`', value: 'ماكينة القمار؛ اجمع 3 رموز متطابقة للفوز بالجائزة الكبرى!' },
+      { name: '`roulette <لون> <مبلغ|all>` — `روليت`', value: 'راهن على أحمر أو أسود (2×) أو أخضر (14×) وشاهد أين تستقر الكرة.' },
+      { name: '`rps <حجر/ورقة/مقص> <مبلغ|all>` — `حجر`', value: 'واجه البوت في حجر ورقة مقص؛ الفوز يمنحك 0.8× المبلغ.' },
+      { name: '`highcard <مبلغ|all>` — `ورقة`', value: 'اسحب ورقة عشوائية ضد البوت؛ الأعلى يفوز بـ 1.5× المبلغ.' },
     ],
   },
   {
@@ -2074,9 +2299,9 @@ const HELP_CATEGORIES = [
     fields: [
       { name: '`rob <شخص>` — `سرقة`', value: 'محاولة نهب رصيد عضو آخر (فرصة نجاح 50%، وغرامة إن فشلت).' },
       { name: '`protect <ساعات>` — `حماية`', value: 'شراء درع حماية يحميك من السرقة لمدة تصل إلى 3 ساعات.' },
-      { name: '`profile [شخص]` — `ملف`', value: 'عرض ملفك الشخصي المالي الكامل، أو ملف أي عضو آخر مع صورته الرمزية.' },
+      { name: '`profile [شخص]` — `بروفايل`', value: 'عرض ملفك الشخصي المالي الكامل، أو ملف أي عضو آخر مع صورته الرمزية.' },
       { name: '`achievements` — `انجازات`', value: 'عرض إنجازاتك البنكية المفتوحة من أصل 12 إنجازاً.' },
-      { name: '`top` — `الاثرياء`', value: 'عرض قائمة أغنى الأعضاء في السيرفر.' },
+      { name: '`top` — `الأثرياء`', value: 'عرض قائمة أغنى الأعضاء في السيرفر.' },
     ],
   },
 ];
@@ -2088,8 +2313,7 @@ function buildHelpMainEmbed() {
       `مرحباً بك في **نظام البنك المتكامل** {emoji:gift}\n` +
         `يقدم لك هذا النظام إدارة كاملة لأموالك: من الرصيد والودائع، إلى الوظائف والقروض، ` +
         `مروراً بالاستثمار والعقارات والشركات، وصولاً إلى متجر الممتلكات الفاخرة وألعاب الحظ!\n\n` +
-        `{emoji:crown} يمكنك استخدام الأوامر عبر السلاش \`/bank\` أو عبر بريفكس السيرفر، مثال: \`بنك فلوسي\` أو \`bank job buy 3\`.\n` +
-        `اختصار أمر المساعدة نفسه هو \`اوامر\`.\n\n` +
+        `{emoji:crown} يمكنك استخدام الأوامر عبر السلاش \`/bank\` أو عبر بريفكس السيرفر، مثال: \`بنك رصيد\` أو \`bank job buy 3\`.\n\n` +
         `{emoji:chartpie} **اختر قسماً من القائمة أدناه** لعرض شرح مفصل لكل أمر فيه {emoji:playerplay}`
     )
     .addFields(
