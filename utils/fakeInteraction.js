@@ -3,19 +3,57 @@ const { ApplicationCommandOptionType } = require('discord.js');
 async function createFakeInteraction(message, cmd, args) {
   const guild = message.guild;
   const client = message.client;
-  
+
   const optionValues = {};
   let subcommandName = null;
+  let subcommandGroupName = null;
   const serialized = cmd.data.toJSON ? cmd.data.toJSON() : cmd.data;
   let optionDefs = serialized.options || [];
 
   if (args.length > 0) {
     const firstArg = args[0].toLowerCase();
-    const subcommandOpt = optionDefs.find(opt => opt.type === 1 && opt.name.toLowerCase() === firstArg);
-    if (subcommandOpt) {
-      subcommandName = subcommandOpt.name;
-      optionDefs = subcommandOpt.options || [];
-      args.shift(); 
+    let matched = null;
+    let matchedGroup = null;
+
+    // 1) أمر فرعي مباشر على المستوى الأول (type === 1)
+    matched = optionDefs.find((opt) => opt.type === 1 && opt.name.toLowerCase() === firstArg);
+
+    // 2) أمر فرعي متداخل داخل مجموعة فرعية (type === 2) — بدون الحاجة لكتابة اسم
+    //    المجموعة نفسها ضمن نص الاختصار/البريفكس، حتى تبقى الاختصارات القديمة تعمل
+    //    (مثال: "bank gamble" يجب أن يعمل حتى لو أصبح gamble داخل مجموعة "games").
+    if (!matched) {
+      for (const opt of optionDefs) {
+        if (opt.type === 2 && Array.isArray(opt.options)) {
+          const inner = opt.options.find((o) => o.type === 1 && o.name.toLowerCase() === firstArg);
+          if (inner) {
+            matched = inner;
+            matchedGroup = opt;
+            break;
+          }
+        }
+      }
+    }
+
+    // 3) دعم كتابة اسم المجموعة صراحة أيضاً (مثال: "bank games gamble ..."),
+    //    في حال احتاجها استخدام مستقبلي.
+    if (!matched) {
+      const groupOpt = optionDefs.find((opt) => opt.type === 2 && opt.name.toLowerCase() === firstArg);
+      if (groupOpt) {
+        const secondArg = (args[1] || '').toLowerCase();
+        const inner = (groupOpt.options || []).find((o) => o.type === 1 && o.name.toLowerCase() === secondArg);
+        if (inner) {
+          matched = inner;
+          matchedGroup = groupOpt;
+          args.shift(); // استهلاك اسم المجموعة الإضافي
+        }
+      }
+    }
+
+    if (matched) {
+      subcommandName = matched.name;
+      subcommandGroupName = matchedGroup ? matchedGroup.name : null;
+      optionDefs = matched.options || [];
+      args.shift();
     }
   }
 
@@ -23,7 +61,7 @@ async function createFakeInteraction(message, cmd, args) {
   for (const opt of optionDefs) {
     const optName = opt.name;
     const optType = opt.type;
-    
+
     if (argIndex >= args.length) {
       optionValues[optName] = null;
       continue;
@@ -31,8 +69,7 @@ async function createFakeInteraction(message, cmd, args) {
 
     let val = args[argIndex];
 
-    if (optType === 3) { 
-      
+    if (optType === 3) {
       const isLast = optionDefs.indexOf(opt) === optionDefs.length - 1;
       if (isLast) {
         val = args.slice(argIndex).join(' ');
@@ -41,15 +78,15 @@ async function createFakeInteraction(message, cmd, args) {
         argIndex++;
       }
       optionValues[optName] = val;
-    } else if (optType === 4 || optType === 10) { 
+    } else if (optType === 4 || optType === 10) {
       val = parseFloat(val);
       optionValues[optName] = isNaN(val) ? null : val;
       argIndex++;
-    } else if (optType === 5) { 
+    } else if (optType === 5) {
       val = val.toLowerCase();
       optionValues[optName] = (val === 'true' || val === 'yes' || val === '1' || val === 'نعم');
       argIndex++;
-    } else if (optType === 6) { 
+    } else if (optType === 6) {
       const match = val.match(/^<@!?(\d+)>$/) || [null, val];
       const userId = match[1];
       const user = await client.users.fetch(userId).catch(() => null);
@@ -59,16 +96,16 @@ async function createFakeInteraction(message, cmd, args) {
         optionValues[optName + '_member'] = member;
       }
       argIndex++;
-    } else if (optType === 7) { 
+    } else if (optType === 7) {
       const match = val.match(/^<#(\d+)>$/) || [null, val];
       const channelId = match[1];
-      const channel = guild.channels.cache.get(channelId) || await guild.channels.fetch(channelId).catch(() => null);
+      const channel = guild.channels.cache.get(channelId) || (await guild.channels.fetch(channelId).catch(() => null));
       optionValues[optName] = channel;
       argIndex++;
-    } else if (optType === 8) { 
+    } else if (optType === 8) {
       const match = val.match(/^<@&(\d+)>$/) || [null, val];
       const roleId = match[1];
-      const role = guild.roles.cache.get(roleId) || await guild.roles.fetch(roleId).catch(() => null);
+      const role = guild.roles.cache.get(roleId) || (await guild.roles.fetch(roleId).catch(() => null));
       optionValues[optName] = role;
       argIndex++;
     } else {
@@ -77,23 +114,42 @@ async function createFakeInteraction(message, cmd, args) {
   }
 
   const optionsGetter = {
-    getSubcommand() { return subcommandName; },
-    getString(name) { return optionValues[name] || null; },
-    getInteger(name) { return optionValues[name] || null; },
-    getNumber(name) { return optionValues[name] || null; },
-    getBoolean(name) { return optionValues[name] || null; },
-    getUser(name) { return optionValues[name] || null; },
+    getSubcommand() {
+      return subcommandName;
+    },
+    getSubcommandGroup() {
+      return subcommandGroupName;
+    },
+    getString(name) {
+      return optionValues[name] || null;
+    },
+    getInteger(name) {
+      return optionValues[name] || null;
+    },
+    getNumber(name) {
+      return optionValues[name] || null;
+    },
+    getBoolean(name) {
+      return optionValues[name] || null;
+    },
+    getUser(name) {
+      return optionValues[name] || null;
+    },
     getMember(name) {
       return optionValues[name + '_member'] || (optionValues[name] ? guild.members.cache.get(optionValues[name].id) : null) || null;
     },
-    getChannel(name) { return optionValues[name] || null; },
-    getRole(name) { return optionValues[name] || null; }
+    getChannel(name) {
+      return optionValues[name] || null;
+    },
+    getRole(name) {
+      return optionValues[name] || null;
+    },
   };
 
   let repliedMessage = null;
 
   const fakeInteraction = {
-    _args: args || [],  
+    _args: args || [],
     guild,
     guildId: guild.id,
     channel: message.channel,
@@ -104,7 +160,7 @@ async function createFakeInteraction(message, cmd, args) {
     options: optionsGetter,
     deferred: false,
     replied: false,
-    
+
     async reply(payload) {
       if (this.replied || this.deferred) {
         throw new Error('Interaction already acknowledged.');
@@ -143,14 +199,10 @@ async function createFakeInteraction(message, cmd, args) {
       return repliedMessage;
     },
 
-    async fetchReply() {
-      return repliedMessage;
-    },
-
     async followUp(payload) {
       if (typeof payload === 'string') payload = { content: payload };
       return message.reply(payload).catch(() => null);
-    }
+    },
   };
 
   return fakeInteraction;
